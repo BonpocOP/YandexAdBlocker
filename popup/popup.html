@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Yandex Games AdBlocker</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header class="head">
+        <h1 class="head__title">Yandex Games AdBlocker</h1>
+        <label class="switch" title="Выключить всё расширение">
+            <input type="checkbox" id="enabled" class="switch__input">
+            <span class="switch__track"></span>
+        </label>
+    </header>
+
+    <p class="status" id="status">Загрузка…</p>
+
+    <ul class="options" id="options">
+        <li class="option">
+            <label class="option__label" for="sticky">
+                <span class="option__name">Баннер в игре</span>
+                <span class="option__hint">Sticky-баннер снизу + растягивание игры</span>
+            </label>
+            <label class="switch switch_small">
+                <input type="checkbox" id="sticky" class="switch__input">
+                <span class="switch__track"></span>
+            </label>
+        </li>
+        <li class="option">
+            <label class="option__label" for="fullscreen">
+                <span class="option__name">Полноэкранная</span>
+                <span class="option__hint">Реклама между уровнями пропускается</span>
+            </label>
+            <label class="switch switch_small">
+                <input type="checkbox" id="fullscreen" class="switch__input">
+                <span class="switch__track"></span>
+            </label>
+        </li>
+        <li class="option">
+            <label class="option__label" for="rewarded">
+                <span class="option__name">За награду</span>
+                <span class="option__hint">Бонус выдаётся без просмотра ролика</span>
+            </label>
+            <label class="switch switch_small">
+                <input type="checkbox" id="rewarded" class="switch__input">
+                <span class="switch__track"></span>
+            </label>
+        </li>
+        <li class="option">
+            <label class="option__label" for="catalog">
+                <span class="option__name">Каталог игр</span>
+                <span class="option__hint">Рекламные карточки в списках</span>
+            </label>
+            <label class="switch switch_small">
+                <input type="checkbox" id="catalog" class="switch__input">
+                <span class="switch__track"></span>
+            </label>
+        </li>
+    </ul>
+
+    <div class="stats">
+        <div class="stats__cell">
+            <span class="stats__value" id="pageCount">0</span>
+            <span class="stats__caption">на странице</span>
+        </div>
+        <div class="stats__cell">
+            <span class="stats__value" id="totalCount">0</span>
+            <span class="stats__caption">всего</span>
+        </div>
+    </div>
+
+    <footer class="foot">
+        <button type="button" class="btn" id="reload">Перезагрузить страницу</button>
+        <button type="button" class="btn btn_ghost" id="report">Скопировать отчёт</button>
+    </footer>
+
+    <script src="popup.js"></script>
+</body>
+</html>

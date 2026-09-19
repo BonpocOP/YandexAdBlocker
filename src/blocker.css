@@ -1,0 +1,53 @@
+/*
+ * Первая линия обороны: срабатывает до запуска content.js, поэтому рекламу
+ * не видно даже мгновение.
+ *
+ * Важно: здесь именно visibility, а не display. Блок остаётся в потоке, и
+ * content.js может измерить его высоту — без этой цифры нечем чинить
+ * геометрию контейнера, из-за которой после обычного адблока оставалось
+ * пустое поле. Сразу после замера скрипт ставит на узел data-ygab-hidden,
+ * и правило ниже убирает блок из потока уже окончательно.
+ *
+ * Каждая группа правил выключается своим атрибутом на <html>, который ставит
+ * content.js. Так тумблеры в попапе возвращают страницу в исходный вид без
+ * перезагрузки, а до чтения настроек (атрибутов ещё нет) реклама скрыта.
+ */
+
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="sticky-adv-banner"],
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="yandex-sticky-adv"],
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="adv-banner__"] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+html:not([data-ygab="off"]):not([data-ygab-catalog="off"]) [id^="adfox_"],
+html:not([data-ygab="off"]):not([data-ygab-catalog="off"]) [id*="yandex_rtb"] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/*
+ * Главное правило против пустого поля.
+ *
+ * Разметка Яндекса режет место под рекламу инлайн-стилем на обёртке фрейма:
+ * width: calc(99.99% - 315px) — боковой блок, height: calc(99.99% - 107px) —
+ * нижний sticky-баннер. Класс обёртки хешированный (wAxTIv38TmZAY), поэтому
+ * цепляемся структурно — за прямого родителя #game-frame.
+ *
+ * !important в таблице стилей перебивает инлайн-стиль, так что размер
+ * держится, даже когда скрипт страницы пересчитывает calc заново.
+ */
+html:not([data-ygab="off"]):not([data-ygab-layout="off"]) div:has(> iframe#game-frame),
+html:not([data-ygab="off"]):not([data-ygab-layout="off"]) iframe#game-frame {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+}
+
+html:not([data-ygab="off"]) [data-ygab-hidden="1"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
