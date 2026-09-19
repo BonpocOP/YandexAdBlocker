@@ -57,6 +57,39 @@
     ];
     const FULLSCREEN_MODAL_SELECTOR = FULLSCREEN_MODAL_SELECTORS.join(', ');
 
+    // Интерстишл платформы: во весь экран, с блюром и паузой игры, но внутри
+    // не реклама сети, а собственное промо Яндекса — «Одно приложение вместо
+    // тысячи», «50+ топ-игр».
+    //
+    // Класс именно `prowo-container`, через «w». Это не опечатка в коде:
+    // платформа так пишет его в разметке, чтобы слот не ловился на слово
+    // «promo» в фильтрах блокировщиков. Вариант с обычным написанием оставлен
+    // на случай, если его вернут, но с обязательным `advType` — иначе под
+    // раздачу попадёт любой промо-контейнер каталога.
+    const PROMO_INTERSTITIAL_SELECTORS = [
+        '[class*="prowo-container"]',
+        '[class*="promo-container_advType"]'
+    ];
+    const PROMO_INTERSTITIAL_SELECTOR = PROMO_INTERSTITIAL_SELECTORS.join(', ');
+
+    // Содержимое интерстишла. Проверка та же по смыслу, что и для рекламного
+    // модала: платформа держит контейнер смонтированным и пустым между
+    // показами, и без этого условия расширение считало бы показ там, где его
+    // нет. Только искать надо не iframe рекламы, а слайд промо — своё промо
+    // Яндекс рисует прямо в документе.
+    const PROMO_CONTENT_SELECTOR = '[class*="promo-slide"], iframe, video';
+
+    // Кнопка закрытия интерстишла. Отдельный список: расширять общий нельзя,
+    // в рекламном модале широкое совпадение нажмёт не то. Ссылки исключены
+    // отдельно в findCloseButton — внутри слайда лежит «Играть на сайте»
+    // с target="_blank", и клик по ней открыл бы вкладку.
+    const PROMO_CLOSE_SELECTOR = [
+        'button[aria-label="Закрыть"]',
+        'button[data-testid*="close"]',
+        'button[class*="close-button"]',
+        'button[class*="closeButton"]'
+    ].join(', ');
+
     // Кнопку закрытия ищем по testid и по типу — они переживают рефакторинг
     // разметки, в отличие от классов-хешей.
     const CLOSE_BUTTON_SELECTOR = [
@@ -536,6 +569,10 @@
         removeOverlay();
     }
 
+    // Признак реального показа рекламы: отрисованный фрейм, видео или блок РСЯ
+    // с id вида ..._R-A-19087429-35_2.
+    const AD_CONTENT_SELECTOR = 'iframe, video, [id*="_R-A-"]';
+
     function isAdvModal(modal) {
         return modal.classList.contains('adv-focusable') || Boolean(modal.querySelector(ADV_MARKER_SELECTOR));
     }
@@ -546,9 +583,19 @@
     //
     // Признак реального показа — отрисованное содержимое внутри: рекламный
     // фрейм, видео или блок РСЯ с id вида ..._R-A-19087429-35_2.
-    function isModalShown(modal) {
+    function isModalShown(modal, contentSelector = AD_CONTENT_SELECTOR) {
         const rect = modal.getBoundingClientRect();
         if (rect.width < 100 || rect.height < 100) {
+            return false;
+        }
+
+        // Платформа паркует неиспользуемые модалы за краем экрана — в отчёте
+        // они стоят на x = -10200 в полный размер. Без этой проверки
+        // припаркованный контейнер считался бы показом: расширение накручивало
+        // бы счётчик, а через восемь секунд убивало бы узел, который платформе
+        // ещё пригодится.
+        if (rect.right <= 0 || rect.bottom <= 0 ||
+            rect.left >= window.innerWidth || rect.top >= window.innerHeight) {
             return false;
         }
 
@@ -562,7 +609,7 @@
             return false;
         }
 
-        const content = modal.querySelector('iframe, video, [id*="_R-A-"]');
+        const content = modal.querySelector(contentSelector);
         if (!content) {
             return false;
         }
@@ -579,12 +626,18 @@
         });
     }
 
-    function findCloseButton(modal) {
-        const buttons = modal.querySelectorAll(CLOSE_BUTTON_SELECTOR);
+    function findCloseButton(modal, selector = CLOSE_BUTTON_SELECTOR) {
+        const buttons = modal.querySelectorAll(selector);
         for (const button of buttons) {
             // disabled-кнопку жать бесполезно: рекламный плеер включает её
             // сам, когда отсчитает свои секунды.
             if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
+                continue;
+            }
+            // Ссылку не жмём никогда: клик по ней уводит со страницы или
+            // открывает вкладку. В промо-слайде такая лежит рядом с крестиком
+            // — «Играть на сайте» с target="_blank".
+            if (button.tagName === 'A') {
                 continue;
             }
             return button;
@@ -666,10 +719,15 @@
 
     /* ---------- закрытие модала ---------- */
 
-    function dismissModal(modal) {
+    function dismissModal(modal, options = {}) {
         if (dismissing.has(modal)) {
             return;
         }
+
+        // Интерстишл с промо закрывается той же машинкой, что и реклама, но
+        // смотрит на своё содержимое и на свою кнопку.
+        const contentSelector = options.contentSelector || AD_CONTENT_SELECTOR;
+        const closeSelector = options.closeSelector || CLOSE_BUTTON_SELECTOR;
 
         const rewarded = isRewardedModal(modal);
         const state = { attempts: 0, rewarded, startedAt: Date.now() };
@@ -726,7 +784,7 @@
 
             // Платформа убрала модал или опустошила его сама — наша работа
             // закончена.
-            if (!modal.isConnected || !isModalShown(modal)) {
+            if (!modal.isConnected || !isModalShown(modal, contentSelector)) {
                 finish();
                 return;
             }
@@ -734,7 +792,7 @@
             muteMedia(modal);
 
             if (!rewarded) {
-                const button = findCloseButton(modal);
+                const button = findCloseButton(modal, closeSelector);
                 if (button) {
                     button.click();
                 }
@@ -793,6 +851,36 @@
             if (rewarded ? settings.rewarded : settings.fullscreen) {
                 dismissModal(modal);
             }
+        });
+
+        scanPromoInterstitial();
+    }
+
+    // Интерстишл с промо Яндекса поверх игры. Закрываем так же, как рекламный
+    // модал, а не через display: none: контейнер держит блюр и паузу, и уйти
+    // из этого состояния платформа должна сама — по клику на крестик. Если за
+    // отведённые попытки крестик не нашёлся, контейнер убирается силой.
+    function scanPromoInterstitial() {
+        if (!settings.fullscreen) {
+            return;
+        }
+        document.querySelectorAll(PROMO_INTERSTITIAL_SELECTOR).forEach(el => {
+            // Берём внешний контейнер: блюр и перехват кликов держит он, а не
+            // слайд внутри.
+            let outer = el;
+            let parent = outer.parentElement;
+            while (parent && parent.matches && parent.matches(PROMO_INTERSTITIAL_SELECTOR)) {
+                outer = parent;
+                parent = outer.parentElement;
+            }
+
+            if (!isModalShown(outer, PROMO_CONTENT_SELECTOR) || outer.hasAttribute(REVEALED_ATTR)) {
+                return;
+            }
+            dismissModal(outer, {
+                contentSelector: PROMO_CONTENT_SELECTOR,
+                closeSelector: PROMO_CLOSE_SELECTOR
+            });
         });
     }
 

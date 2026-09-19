@@ -91,6 +91,22 @@ html:not([data-ygab="off"]):not([data-ygab-rewarded="off"]) .play-modal.adv-focu
 }
 
 /*
+ * Интерстишл платформы с собственным промо Яндекса («Одно приложение вместо
+ * тысячи»). Класс `prowo-container` — через «w»: так его пишет сама платформа,
+ * чтобы слот не ловился на слово «promo» в фильтрах блокировщиков.
+ *
+ * Гасим тоже opacity, а не display: контейнер держит блюр и паузу игры, снять
+ * их платформа должна сама по клику на крестик — его жмёт content.js.
+ * :has() обязателен по той же причине, что и у рекламного модала: между
+ * показами контейнер висит смонтированным и пустым.
+ */
+html:not([data-ygab="off"]):not([data-ygab-fullscreen="off"]) [class*="prowo-container"]:not([data-ygab-revealed]):has([class*="promo-slide"]),
+html:not([data-ygab="off"]):not([data-ygab-fullscreen="off"]) [class*="promo-container_advType"]:not([data-ygab-revealed]):has([class*="promo-slide"]) {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/*
  * Наш собственный экран вместо рекламы за награду: пока ролик крутится
  * невидимым, игрок видит отсчёт и понимает, что награда придёт.
  */
