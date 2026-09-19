@@ -106,6 +106,22 @@
     const DISABLE_ADV_SELECTOR = DISABLE_ADV_SELECTORS.join(', ');
     const DISABLE_ADV_WRAPPER_SELECTOR = '[class*="disableAdButtonSlot"], [class*="disableAdButtonContainer"]';
 
+    // Всплывашка «Обменяйте яны на отключение рекламы». То же предложение, что
+    // и кнопка выше, только подсовывается поверх игры отдельным попапом.
+    //
+    // Цепляемся за корень: `no-ads-popup__popup` есть только на нём, у детей
+    // внутри имена вида `no-ads-popup__content`, `no-ads-popup__text`. Класс
+    // `popup-module__popup--mv7Tz` не годится — он хешированный и общий для
+    // всех попапов платформы, включая нерекламные.
+    const NO_ADS_POPUP_SELECTORS = [
+        '[data-testid="no-ads-popup-popup"]',
+        '[class*="no-ads-popup__popup"]'
+    ];
+    const NO_ADS_POPUP_SELECTOR = NO_ADS_POPUP_SELECTORS.join(', ');
+    // Блок целиком, вместе с возможной обёрткой-якорем: у попапа те же классы
+    // по схеме БЭМ (`no-ads-popup`), а держать место может родитель.
+    const NO_ADS_POPUP_BLOCK_SELECTOR = '[class*="no-ads-popup"]';
+
     // Приманка детектора блокировщиков: элемент 1x1 за краем экрана с
     // «рекламными» именами. Если его скрыть, Яндекс решит, что включён
     // адблок, и потребует его отключить. Не трогаем никогда.
@@ -482,6 +498,25 @@
             // Поднимаемся до слота: сама кнопка лежит в контейнере, который
             // держит высоту, даже когда внутри уже ничего не видно.
             const outer = el.closest(DISABLE_ADV_WRAPPER_SELECTOR) || el;
+            hide(outer, { allowButtons: true });
+        });
+
+        scanNoAdsPopup();
+    }
+
+    // Всплывашка с предложением обменять яны. Здесь display: none без оговорок:
+    // это промо платформы, а не рекламный показ, — досчитывать нечего.
+    function scanNoAdsPopup() {
+        document.querySelectorAll(NO_ADS_POPUP_SELECTOR).forEach(el => {
+            // Поднимаемся до внешнего узла блока: сам попап позиционируется
+            // внутри обёртки, которая переживёт скрытие ребёнка и продолжит
+            // перехватывать клики.
+            let outer = el;
+            let parent = outer.parentElement;
+            while (parent && parent.matches && parent.matches(NO_ADS_POPUP_BLOCK_SELECTOR)) {
+                outer = parent;
+                parent = outer.parentElement;
+            }
             hide(outer, { allowButtons: true });
         });
     }

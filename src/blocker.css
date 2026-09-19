@@ -32,6 +32,17 @@ html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="disableAdButt
     display: none !important;
 }
 
+/*
+ * Всплывашка «Обменяйте яны на отключение рекламы» — то же предложение, но
+ * отдельным попапом поверх игры. Зацепка `no-ads-popup__popup` стоит только на
+ * корне попапа; хешированный `popup-module__popup--*` не трогаем, он общий для
+ * всех диалогов платформы.
+ */
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [data-testid="no-ads-popup-popup"],
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="no-ads-popup__popup"] {
+    display: none !important;
+}
+
 html:not([data-ygab="off"]):not([data-ygab-catalog="off"]) [id^="adfox_"],
 html:not([data-ygab="off"]):not([data-ygab-catalog="off"]) [id*="yandex_rtb"] {
     visibility: hidden !important;
