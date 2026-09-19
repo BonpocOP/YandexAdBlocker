@@ -20,6 +20,18 @@ html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="adv-banner__"
     pointer-events: none !important;
 }
 
+/*
+ * Платформенная кнопка «Отключить рекламу» и её слот. Здесь display, а не
+ * visibility: измерять нечего, а пустая полоса 315x32 в правом верхнем углу
+ * не нужна.
+ */
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [data-testid="disable-adv-button-sticky"],
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="disable-adv-button-sticky"],
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="disableAdButtonContainer"],
+html:not([data-ygab="off"]):not([data-ygab-sticky="off"]) [class*="disableAdButtonSlot"] {
+    display: none !important;
+}
+
 html:not([data-ygab="off"]):not([data-ygab-catalog="off"]) [id^="adfox_"],
 html:not([data-ygab="off"]):not([data-ygab-catalog="off"]) [id*="yandex_rtb"] {
     visibility: hidden !important;
@@ -43,6 +55,91 @@ html:not([data-ygab="off"]):not([data-ygab-layout="off"]) iframe#game-frame {
     height: 100% !important;
     max-width: 100% !important;
     max-height: 100% !important;
+}
+
+/*
+ * Полноэкранный рекламный модал, который платформа показывает поверх игры.
+ *
+ * Здесь opacity, а не display: элемент должен остаться отрисованным, иначе
+ * рекламный плеер не досчитает показ и кнопка «Закрыть» никогда не станет
+ * активной — игра так и останется на паузе за блюром. content.js гасит модал
+ * этими же стилями и жмёт «Закрыть»; правило ниже нужно, чтобы реклама не
+ * успела мигнуть до срабатывания скрипта.
+ */
+/*
+ * :has(iframe) здесь обязателен. Платформа держит модал смонтированным и
+ * пустым между показами, и без этого условия правило гасило пустышку, а
+ * расширение показывало таймер там, где рекламы нет. Рекламный фрейм внутри —
+ * признак настоящего показа. Модал, возвращённый кнопкой «Показать рекламу»,
+ * исключён по data-ygab-revealed.
+ */
+html:not([data-ygab="off"]):not([data-ygab-fullscreen="off"]) .play-modal.adv-focusable:not([class*="rewarded"]):not([data-ygab-revealed]):has(iframe),
+html:not([data-ygab="off"]):not([data-ygab-rewarded="off"]) .play-modal.adv-focusable[class*="rewarded"]:not([data-ygab-revealed]):has(iframe) {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/*
+ * Наш собственный экран вместо рекламы за награду: пока ролик крутится
+ * невидимым, игрок видит отсчёт и понимает, что награда придёт.
+ */
+.ygab-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(12, 12, 14, 0.82);
+    font: 400 14px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    /* Клики уходят сквозь фон: под ним пауза игры, перехватывать нечего. */
+    pointer-events: none;
+}
+
+.ygab-overlay__card {
+    min-width: 240px;
+    padding: 24px 32px;
+    background: #17171a;
+    border: 1px solid #2e2e34;
+    border-radius: 16px;
+    color: #f2f2f4;
+    text-align: center;
+    pointer-events: auto;
+}
+
+.ygab-overlay__title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.ygab-overlay__timer {
+    margin: 12px 0 4px;
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1;
+    color: #ffcc00;
+    font-variant-numeric: tabular-nums;
+}
+
+.ygab-overlay__hint {
+    color: #9a9aa4;
+    font-size: 12px;
+}
+
+.ygab-overlay__reveal {
+    margin-top: 16px;
+    padding: 6px 12px;
+    background: transparent;
+    color: #9a9aa4;
+    border: 1px solid #2e2e34;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.ygab-overlay__reveal:hover {
+    color: #f2f2f4;
 }
 
 html:not([data-ygab="off"]) [data-ygab-hidden="1"] {

@@ -17,6 +17,8 @@
 
     const HIDDEN_ATTR = 'data-ygab-hidden';
     const SDK_ATTR = 'data-ygab-sdk';
+    // Модал, который игрок вернул кнопкой «Показать рекламу».
+    const REVEALED_ATTR = 'data-ygab-revealed';
 
     // Sticky-баннер внутри запущенной игры. Совпадение по подстроке, а не по
     // полному классу: Яндекс регулярно меняет модификаторы вроде
@@ -26,7 +28,9 @@
         '[class*="yandex-sticky-adv"]',
         '[class*="adv-banner"]',
         '[class*="AdvBanner"]',
-        '[data-testid*="adv"]',
+        // Боковая рекламная колонка 315px справа от игры: id вида
+        // yandex-<hash>-desktop плюс класс adv-focusable.
+        'div.adv-focusable[id^="yandex-"]',
         'iframe[src*="an.yandex.ru"]',
         'iframe[src*="yabs.yandex"]',
         'iframe[src*="adfox"]'
@@ -43,10 +47,69 @@
         'ins.adsbygoogle'
     ];
 
+    // Полноэкранный модал, который платформа показывает поверх игры сама, без
+    // участия игрового SDK. Хешированные классы вида play-yandex-wCRrBuz4aqZ...
+    // не используем — они меняются от сборки к сборке.
+    const FULLSCREEN_MODAL_SELECTORS = [
+        '.play-modal.adv-focusable',
+        '[class*="play-modal_fullscreen"]',
+        '[class*="modal"][class*="adv-focusable"]'
+    ];
+    const FULLSCREEN_MODAL_SELECTOR = FULLSCREEN_MODAL_SELECTORS.join(', ');
+
+    // Кнопку закрытия ищем по testid и по типу — они переживают рефакторинг
+    // разметки, в отличие от классов-хешей.
+    const CLOSE_BUTTON_SELECTOR = [
+        '[data-testid="yandex-fullscreen-render-button"]',
+        '[data-testid*="fullscreen-render-button"]',
+        '[class*="close-button_type_adv"]',
+        'button[aria-label="Закрыть"]'
+    ].join(', ');
+
+    // Признаки, по которым модал считается рекламным. Без этой проверки под
+    // раздачу попадут обычные диалоги платформы — пауза, вход в аккаунт.
+    const ADV_MARKER_SELECTOR = '[id*="_R-A-"], [class*="adv"], [data-testid*="adv"], ' + CLOSE_BUTTON_SELECTOR;
+
+    const DISMISS_INTERVAL_MS = 250;
+    const DISMISS_ATTEMPTS = 32;
+
+    // Реклама за награду обычно разрешает закрытие с зачётом бонуса секунд
+    // через 15. Это запасной отсчёт — если удастся прочитать таймер самой
+    // рекламы, ориентируемся на него.
+    const REWARDED_MIN_WAIT_MS = 15000;
+    const REWARDED_MAX_WAIT_MS = 60000;
+
     // Свойства, которыми страница резервирует место под баннер. Значение,
     // совпавшее с высотой баннера, обнуляем.
     const SIZE_PROPS = ['height', 'min-height', 'max-height', 'padding-bottom', 'margin-bottom', 'bottom'];
-    const CUSTOM_PROP_RE = /(adv|ads?|banner)/i;
+
+    // Имя CSS-переменной разбираем по сегментам между дефисами. Подстроку
+    // искать нельзя: «ad» сидит внутри b-ad-ge, r-ad-ius, p-ad-ding, he-ad-er,
+    // и прошлая версия регулярки обнулила полтора десятка чужих переменных.
+    // Без «sticky»: так Яндекс зовёт и обычную шапку, из-за чего под нож попала
+    // переменная --sticky-header-wrap-bg-size, не имеющая к рекламе отношения.
+    const CUSTOM_PROP_RE = /(^|-)(adv|ads|advert|banner)(-|$)/i;
+
+    // Ниже этой высоты блок баннером не считаем: иначе под «резерв места»
+    // попадают нулевые и почти нулевые значения по всей странице.
+    const MIN_BANNER_HEIGHT = 20;
+
+    // Платформенная кнопка «Отключить рекламу» (предложение убрать рекламу за
+    // деньги). Скрываем вместе с её слотом в разметке, иначе на месте кнопки
+    // остаётся пустая полоса 315x32 в правом верхнем углу.
+    const DISABLE_ADV_SELECTORS = [
+        '[data-testid="disable-adv-button-sticky"]',
+        '[class*="disable-adv-button-sticky"]',
+        '[class*="disableAdButtonContainer"]',
+        '[class*="disableAdButtonSlot"]'
+    ];
+    const DISABLE_ADV_SELECTOR = DISABLE_ADV_SELECTORS.join(', ');
+    const DISABLE_ADV_WRAPPER_SELECTOR = '[class*="disableAdButtonSlot"], [class*="disableAdButtonContainer"]';
+
+    // Приманка детектора блокировщиков: элемент 1x1 за краем экрана с
+    // «рекламными» именами. Если его скрыть, Яндекс решит, что включён
+    // адблок, и потребует его отключить. Не трогаем никогда.
+    const BAIT_SELECTOR = '#AdBanner, .AdsBox, [class*="ad_box"], [class*="ad_banner"], [class*="Ad_container"]';
 
     let settings = { ...DEFAULTS };
     let observer = null;
@@ -61,6 +124,20 @@
     // Каждая правка инлайн-стиля запоминается, чтобы тумблер «выключить»
     // возвращал страницу в исходное состояние без перезагрузки.
     const touched = [];
+
+    // Диагностические сообщения от sdk-hook.js, в том числе из фрейма игры.
+    // Слушателя ставим синхронно, до чтения настроек: хук рапортует о загрузке
+    // сразу на document_start.
+    const sdkEvents = [];
+    window.addEventListener('message', event => {
+        const data = event.data;
+        if (!data || typeof data !== 'object' || typeof data.__ygab !== 'string') {
+            return;
+        }
+        if (sdkEvents.length < 30) {
+            sdkEvents.push({ kind: data.__ygab, detail: data.detail, href: data.href });
+        }
+    });
 
     /* ---------- утилиты ---------- */
 
@@ -97,8 +174,19 @@
 
     /* ---------- скрытие ---------- */
 
-    function hide(el) {
+    function hide(el, options = {}) {
         if (!el || el.getAttribute(HIDDEN_ATTR) === '1') {
+            return false;
+        }
+
+        // Кнопки — это интерфейс, а не реклама: широкий селектор однажды уже
+        // прибил «Отключить рекламу» по одному лишь совпадению в data-testid.
+        // Снять предохранитель можно только адресно, флагом allowButtons.
+        if (!options.allowButtons && (el.tagName === 'BUTTON' || el.closest('button'))) {
+            return false;
+        }
+
+        if (el.matches(BAIT_SELECTOR)) {
             return false;
         }
 
@@ -176,6 +264,10 @@
     // CSS-переменные вида --sticky-adv-height: 90px. Имя заранее неизвестно,
     // поэтому ищем по смыслу: подходящее имя плюс совпавшее значение.
     function fixCustomProps(el, height) {
+        if (height < MIN_BANNER_HEIGHT) {
+            return;
+        }
+
         let computed;
         try {
             computed = getComputedStyle(el);
@@ -183,10 +275,12 @@
             return;
         }
         for (const name of computed) {
-            if (!name.startsWith('--') || !CUSTOM_PROP_RE.test(name)) {
+            if (!name.startsWith('--') || !CUSTOM_PROP_RE.test(name.slice(2))) {
                 continue;
             }
-            if (near(pxOf(computed.getPropertyValue(name)), height)) {
+            const value = pxOf(computed.getPropertyValue(name));
+            // Нулевую переменную обнулять незачем — только мусорим в разметке.
+            if (value && near(value, height)) {
                 force(el, name, '0px');
             }
         }
@@ -373,9 +467,296 @@
             }
 
             const height = outer.getBoundingClientRect().height;
-            if (hide(outer) && height > 0) {
+            if (hide(outer) && height >= MIN_BANNER_HEIGHT) {
                 lastBannerParent = outer.parentElement;
                 relayout(height);
+            }
+        });
+    }
+
+    function scanDisableAdvButton() {
+        if (!settings.sticky) {
+            return;
+        }
+        document.querySelectorAll(DISABLE_ADV_SELECTOR).forEach(el => {
+            // Поднимаемся до слота: сама кнопка лежит в контейнере, который
+            // держит высоту, даже когда внутри уже ничего не видно.
+            const outer = el.closest(DISABLE_ADV_WRAPPER_SELECTOR) || el;
+            hide(outer, { allowButtons: true });
+        });
+    }
+
+    /* ---------- полноэкранный модал ---------- */
+
+    // Состояние закрытия держим на самом узле: модал создаётся заново на
+    // каждый показ, WeakMap не мешает сборщику мусора его забрать.
+    const dismissing = new WeakMap();
+    // Отдельный список таймеров: WeakMap не обойти, а гасить их при выключении
+    // расширения нужно.
+    let dismissTimers = [];
+
+    function stopDismissing() {
+        dismissTimers.forEach(clearInterval);
+        dismissTimers = [];
+        removeOverlay();
+    }
+
+    function isAdvModal(modal) {
+        return modal.classList.contains('adv-focusable') || Boolean(modal.querySelector(ADV_MARKER_SELECTOR));
+    }
+
+    // Платформа держит модал смонтированным между показами — пустым, но во всю
+    // ширину экрана. Проверять только размер нельзя: из-за этого таймер
+    // всплывал при запуске игры, когда никакой рекламы ещё не было.
+    //
+    // Признак реального показа — отрисованное содержимое внутри: рекламный
+    // фрейм, видео или блок РСЯ с id вида ..._R-A-19087429-35_2.
+    function isModalShown(modal) {
+        const rect = modal.getBoundingClientRect();
+        if (rect.width < 100 || rect.height < 100) {
+            return false;
+        }
+
+        let computed;
+        try {
+            computed = getComputedStyle(modal);
+        } catch (e) {
+            return false;
+        }
+        if (computed.display === 'none' || computed.visibility === 'hidden') {
+            return false;
+        }
+
+        const content = modal.querySelector('iframe, video, [id*="_R-A-"]');
+        if (!content) {
+            return false;
+        }
+        const contentRect = content.getBoundingClientRect();
+        return contentRect.width > 0 && contentRect.height > 0;
+    }
+
+    // Звук рекламы в скрытом модале продолжает играть. Для медиа в самом
+    // документе это лечится, для кросс-доменного iframe — нет.
+    function muteMedia(root) {
+        root.querySelectorAll('video, audio').forEach(media => {
+            media.muted = true;
+            media.volume = 0;
+        });
+    }
+
+    function findCloseButton(modal) {
+        const buttons = modal.querySelectorAll(CLOSE_BUTTON_SELECTOR);
+        for (const button of buttons) {
+            // disabled-кнопку жать бесполезно: рекламный плеер включает её
+            // сам, когда отсчитает свои секунды.
+            if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
+                continue;
+            }
+            return button;
+        }
+        return null;
+    }
+
+    // Реклама за награду. Отличается от обычной тем, что ранний клик по
+    // «Закрыть» отменяет бонус, ради которого игрок её и запустил.
+    function isRewardedModal(modal) {
+        return /rewarded/i.test(modal.getAttribute('class') || '');
+    }
+
+    // Пытаемся прочитать таймер самой рекламы. Получится, только если отсчёт
+    // рисует платформа: внутри кросс-доменного iframe текст недоступен.
+    function readAdCountdown(modal) {
+        const nodes = modal.querySelectorAll('div, span, button, p');
+        for (const node of nodes) {
+            const own = Array.from(node.childNodes)
+                .filter(child => child.nodeType === Node.TEXT_NODE)
+                .map(child => child.textContent)
+                .join(' ')
+                .trim();
+            const match = own.match(/^(\d{1,2})\s*(?:с|сек|секунд[аы]?|s|sec)?\.?$/i);
+            if (match) {
+                const value = Number(match[1]);
+                if (value <= 60) {
+                    return value;
+                }
+            }
+        }
+        return null;
+    }
+
+    /* ---------- оверлей с таймером ---------- */
+
+    let overlay = null;
+
+    function buildOverlay(onReveal) {
+        // Собираем через createElement, а не innerHTML: на странице включены
+        // Trusted Types, и строковая разметка может быть отклонена.
+        const root = document.createElement('div');
+        root.className = 'ygab-overlay';
+
+        const card = document.createElement('div');
+        card.className = 'ygab-overlay__card';
+
+        const title = document.createElement('div');
+        title.className = 'ygab-overlay__title';
+        title.textContent = 'Реклама за награду скрыта';
+
+        const timer = document.createElement('div');
+        timer.className = 'ygab-overlay__timer';
+        timer.textContent = '—';
+
+        const hint = document.createElement('div');
+        hint.className = 'ygab-overlay__hint';
+        hint.textContent = 'Награда придёт автоматически';
+
+        const reveal = document.createElement('button');
+        reveal.className = 'ygab-overlay__reveal';
+        reveal.type = 'button';
+        reveal.textContent = 'Показать рекламу';
+        reveal.addEventListener('click', onReveal);
+
+        card.append(title, timer, hint, reveal);
+        root.append(card);
+        document.body.append(root);
+
+        return { root, timer, hint };
+    }
+
+    function removeOverlay() {
+        if (overlay) {
+            overlay.root.remove();
+            overlay = null;
+        }
+    }
+
+    /* ---------- закрытие модала ---------- */
+
+    function dismissModal(modal) {
+        if (dismissing.has(modal)) {
+            return;
+        }
+
+        const rewarded = isRewardedModal(modal);
+        const state = { attempts: 0, rewarded, startedAt: Date.now() };
+        dismissing.set(modal, state);
+
+        // Гасим визуально, но оставляем в потоке и в отрисовке: рекламный
+        // плеер должен считать себя показанным, иначе кнопка закрытия не
+        // станет активной и игра останется на паузе за блюром.
+        force(modal, 'opacity', '0');
+        force(modal, 'pointer-events', 'none');
+        muteMedia(modal);
+
+        pageBlocked += 1;
+        pendingTotal += 1;
+        scheduleTotalFlush();
+
+        if (rewarded) {
+            removeOverlay();
+            overlay = buildOverlay(() => {
+                // Аварийный выход: если отсчёт врёт или награда не приходит,
+                // игрок возвращает рекламу и досматривает её сам.
+                modal.style.setProperty('opacity', '1', 'important');
+                modal.style.setProperty('pointer-events', 'auto', 'important');
+                modal.setAttribute(REVEALED_ATTR, '1');
+                clearInterval(state.timer);
+                dismissing.delete(modal);
+                removeOverlay();
+
+                // Метку снимаем, когда показ закончится: узел переиспользуется,
+                // и следующую рекламу расширение снова должно скрыть.
+                const watcher = setInterval(() => {
+                    if (!modal.isConnected || !isModalShown(modal)) {
+                        clearInterval(watcher);
+                        modal.removeAttribute(REVEALED_ATTR);
+                        modal.style.removeProperty('opacity');
+                        modal.style.removeProperty('pointer-events');
+                    }
+                }, DISMISS_INTERVAL_MS);
+                dismissTimers.push(watcher);
+            });
+        }
+
+        // Узел переиспользуется между показами, поэтому состояние обязательно
+        // снимаем: иначе следующая реклама в том же модале будет пропущена.
+        const finish = () => {
+            clearInterval(state.timer);
+            dismissing.delete(modal);
+            removeOverlay();
+        };
+
+        state.timer = setInterval(() => {
+            state.attempts += 1;
+            const elapsed = Date.now() - state.startedAt;
+
+            // Платформа убрала модал или опустошила его сама — наша работа
+            // закончена.
+            if (!modal.isConnected || !isModalShown(modal)) {
+                finish();
+                return;
+            }
+
+            muteMedia(modal);
+
+            if (!rewarded) {
+                const button = findCloseButton(modal);
+                if (button) {
+                    button.click();
+                }
+                // Кнопка так и не сработала: убираем модал силой. Игра может
+                // остаться на паузе, но экран будет свободен.
+                if (state.attempts >= DISMISS_ATTEMPTS) {
+                    modal.style.setProperty('display', 'none', 'important');
+                    finish();
+                }
+                return;
+            }
+
+            // Дальше — только реклама за награду.
+            //
+            // Ранний клик по «Закрыть» отменяет бонус, поэтому ждём. Если
+            // платформа рисует отсчёт в самом документе, читаем его; если нет
+            // — отсчитываем сами от типичных 15 секунд.
+            const adCountdown = readAdCountdown(modal);
+            const ownRemaining = Math.max(0, Math.ceil((REWARDED_MIN_WAIT_MS - elapsed) / 1000));
+            const remaining = adCountdown !== null ? adCountdown : ownRemaining;
+
+            if (overlay) {
+                overlay.timer.textContent = remaining > 0 ? String(remaining) : '0';
+                overlay.hint.textContent = remaining > 0
+                    ? 'Награда придёт автоматически'
+                    : 'Забираем награду…';
+            }
+
+            if (remaining > 0) {
+                return;
+            }
+
+            // Отсчёт кончился — награда засчитана, можно закрывать.
+            const button = findCloseButton(modal);
+            if (button) {
+                button.click();
+            }
+
+            if (elapsed >= REWARDED_MAX_WAIT_MS) {
+                modal.style.setProperty('display', 'none', 'important');
+                finish();
+            }
+        }, DISMISS_INTERVAL_MS);
+        dismissTimers.push(state.timer);
+    }
+
+    function scanFullscreen() {
+        if (!settings.fullscreen && !settings.rewarded) {
+            return;
+        }
+        document.querySelectorAll(FULLSCREEN_MODAL_SELECTOR).forEach(modal => {
+            if (!isAdvModal(modal) || !isModalShown(modal) || modal.hasAttribute(REVEALED_ATTR)) {
+                return;
+            }
+            const rewarded = isRewardedModal(modal);
+            if (rewarded ? settings.rewarded : settings.fullscreen) {
+                dismissModal(modal);
             }
         });
     }
@@ -394,6 +775,8 @@
             return;
         }
         scanSticky();
+        scanDisableAdvButton();
+        scanFullscreen();
         scanCatalog();
         // Не зависит от того, нашёлся ли баннер: резерв в calc остаётся на
         // месте, даже когда рекламный блок ещё не отрисован.
@@ -456,6 +839,8 @@
         flag('data-ygab', settings.enabled);
         flag('data-ygab-sticky', settings.sticky);
         flag('data-ygab-catalog', settings.catalog);
+        flag('data-ygab-fullscreen', settings.fullscreen);
+        flag('data-ygab-rewarded', settings.rewarded);
         // Растягивание фрейма относится к тому же тумблеру, что и баннер:
         // без баннера место всё равно надо отдать игре.
         flag('data-ygab-layout', settings.sticky);
@@ -468,6 +853,7 @@
         // Настройки могли сузиться, поэтому сначала возвращаем страницу в
         // исходный вид, а потом скрываем заново уже по новым правилам.
         stopObserver();
+        stopDismissing();
         restoreStyles();
         unhideAll();
 
@@ -495,6 +881,9 @@
             tag: el.tagName,
             class: el.getAttribute('class'),
             id: el.id || null,
+            // src фрейма игры показывает, покрыт ли его origin в manifest:
+            // без этого не понять, доехал ли хук SDK до нужного документа.
+            src: el.getAttribute('src'),
             rect: el.getBoundingClientRect().toJSON(),
             inlineStyle: el.getAttribute('style')
         } : null;
@@ -522,6 +911,9 @@
             blockedOnPage: pageBlocked,
             settings,
             viewport: { width: window.innerWidth, height: window.innerHeight },
+            // Пусто — значит sdk-hook.js не попал во фрейм игры и реклама
+            // через SDK идёт мимо заглушки.
+            sdkEvents,
             banner: describe(banner),
             bannerChain: ancestorChain(banner, 5).map(describe),
             gameFrame: describe(frame),

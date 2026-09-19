@@ -30,6 +30,21 @@
         }
     }
 
+    // Диагностика: сообщаем верхнему документу, что хук доехал до этого фрейма
+    // и что в нём происходит. content.js собирает эти события в отчёт — иначе
+    // невозможно отличить «SDK не найден» от «фрейм вообще без нашего скрипта».
+    function notify(kind, detail) {
+        const message = { __ygab: kind, detail: detail || null, href: location.href };
+        try {
+            window.postMessage(message, '*');
+            if (window.parent !== window) {
+                window.parent.postMessage(message, '*');
+            }
+        } catch (e) {
+            /* межфреймовая отправка запрещена — диагностика не критична */
+        }
+    }
+
     const call = fn => {
         if (typeof fn !== 'function') {
             return;
@@ -46,11 +61,13 @@
             return adv;
         }
         adv.__ygabPatched = true;
+        notify('sdk-patched', Object.keys(adv).filter(key => typeof adv[key] === 'function').join(','));
 
         const originalFullscreen = typeof adv.showFullscreenAdv === 'function' ? adv.showFullscreenAdv.bind(adv) : null;
         const originalRewarded = typeof adv.showRewardedVideo === 'function' ? adv.showRewardedVideo.bind(adv) : null;
 
         adv.showFullscreenAdv = (options = {}) => {
+            notify('sdk-call', 'showFullscreenAdv');
             if (!isOn('fullscreen')) {
                 return originalFullscreen ? originalFullscreen(options) : Promise.resolve();
             }
@@ -73,6 +90,7 @@
         };
 
         adv.showRewardedVideo = (options = {}) => {
+            notify('sdk-call', 'showRewardedVideo');
             if (!isOn('rewarded')) {
                 return originalRewarded ? originalRewarded(options) : Promise.resolve();
             }
@@ -142,4 +160,20 @@
     intercept('YaGames', patchYaGames);
     // Часть игр складывает готовый ysdk в глобальную переменную.
     intercept('ysdk', patchYsdk);
+
+    // Перехват через defineProperty может не сработать: SDK способен объявить
+    // свойство сам или прийти как ES-модуль, минуя window. Поэтому ещё
+    // несколько раз проверяем глобалы напрямую.
+    [50, 200, 1000, 3000, 8000].forEach(delay => {
+        setTimeout(() => {
+            if (window.YaGames) {
+                patchYaGames(window.YaGames);
+            }
+            if (window.ysdk) {
+                patchYsdk(window.ysdk);
+            }
+        }, delay);
+    });
+
+    notify('sdk-hook-loaded', window.parent === window ? 'top' : 'iframe');
 })();
