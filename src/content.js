@@ -567,6 +567,7 @@
         dismissTimers.forEach(clearInterval);
         dismissTimers = [];
         removeOverlay();
+        removeToast();
     }
 
     // Признак реального показа рекламы: отрисованный фрейм, видео или блок РСЯ
@@ -672,6 +673,79 @@
         return null;
     }
 
+    /* ---------- фокус и индикация ---------- */
+
+    // Пока модал висит поверх игры, фокус держит он: у платформы это
+    // focus-trap, отсюда и класс adv-focusable. Платформа возвращает фокус
+    // игре сама, когда закрывает рекламу своим путём; мы этот путь обходим,
+    // поэтому после закрытия фрейм остаётся без фокуса — игра видна, но не
+    // реагирует на клавиатуру.
+    function refocusGame() {
+        const frame = document.querySelector('iframe#game-frame') || largestFrame();
+        if (!frame) {
+            return;
+        }
+        try {
+            // Сначала снимаем фокус с того, что его перехватило: иначе
+            // focus-trap модала вернёт его себе.
+            if (document.activeElement && document.activeElement !== document.body) {
+                document.activeElement.blur();
+            }
+            frame.focus({ preventScroll: true });
+            // Фрейм кросс-доменный, но focus() — один из немногих методов,
+            // разрешённых через границу origin. Без него фокус останется на
+            // элементе <iframe>, а не внутри документа игры.
+            if (frame.contentWindow) {
+                frame.contentWindow.focus();
+            }
+        } catch (e) {
+            /* фокус не критичен — молча пропускаем */
+        }
+    }
+
+    /* ---------- плашка-индикатор ---------- */
+
+    // Полноэкранная реклама пропускается за доли секунды, и без индикации
+    // выглядит это как мигание непонятно чего. Большой оверлей с карточкой
+    // тут не годится — он сам мелькнёт и помешает. Поэтому маленькая плашка в
+    // углу: видно, что произошло, и видно счётчик, если закрытие затянулось.
+    let toast = null;
+    let toastTimer = null;
+
+    function showToast(text) {
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.className = 'ygab-toast';
+            document.body.append(toast);
+        }
+        toast.textContent = text;
+        clearTimeout(toastTimer);
+        toastTimer = null;
+        return toast;
+    }
+
+    // Плашка живёт ещё пару секунд после закрытия: иначе при быстрой рекламе
+    // игрок не успеет её прочитать.
+    function fadeToast(text) {
+        if (text) {
+            showToast(text);
+        }
+        if (!toast) {
+            return;
+        }
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(removeToast, 2000);
+    }
+
+    function removeToast() {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+        if (toast) {
+            toast.remove();
+            toast = null;
+        }
+    }
+
     /* ---------- оверлей с таймером ---------- */
 
     let overlay = null;
@@ -730,6 +804,7 @@
         const closeSelector = options.closeSelector || CLOSE_BUTTON_SELECTOR;
 
         const rewarded = isRewardedModal(modal);
+        const label = options.label || (rewarded ? 'Реклама за награду' : 'Реклама');
         const state = { attempts: 0, rewarded, startedAt: Date.now() };
         dismissing.set(modal, state);
 
@@ -743,6 +818,10 @@
         pageBlocked += 1;
         pendingTotal += 1;
         scheduleTotalFlush();
+
+        if (!rewarded) {
+            showToast(label + ': закрываем…');
+        }
 
         if (rewarded) {
             removeOverlay();
@@ -776,6 +855,10 @@
             clearInterval(state.timer);
             dismissing.delete(modal);
             removeOverlay();
+            fadeToast(state.forced ? label + ': убрана принудительно' : label + ' пропущена');
+            // Фокус возвращаем в игру: без этого управление с клавиатуры
+            // после закрытия рекламы не работает.
+            refocusGame();
         };
 
         state.timer = setInterval(() => {
@@ -792,6 +875,13 @@
             muteMedia(modal);
 
             if (!rewarded) {
+                // Счётчик в плашке: если закрытие затянулось, по нему видно,
+                // что расширение всё ещё работает, а не зависло.
+                const waiting = Math.ceil(elapsed / 1000);
+                showToast(waiting > 1
+                    ? label + ': закрываем… ' + waiting + ' с'
+                    : label + ': закрываем…');
+
                 const button = findCloseButton(modal, closeSelector);
                 if (button) {
                     button.click();
@@ -800,6 +890,7 @@
                 // остаться на паузе, но экран будет свободен.
                 if (state.attempts >= DISMISS_ATTEMPTS) {
                     modal.style.setProperty('display', 'none', 'important');
+                    state.forced = true;
                     finish();
                 }
                 return;
@@ -833,6 +924,7 @@
 
             if (elapsed >= REWARDED_MAX_WAIT_MS) {
                 modal.style.setProperty('display', 'none', 'important');
+                state.forced = true;
                 finish();
             }
         }, DISMISS_INTERVAL_MS);
@@ -879,7 +971,8 @@
             }
             dismissModal(outer, {
                 contentSelector: PROMO_CONTENT_SELECTOR,
-                closeSelector: PROMO_CLOSE_SELECTOR
+                closeSelector: PROMO_CLOSE_SELECTOR,
+                label: 'Промо платформы'
             });
         });
     }
@@ -1029,6 +1122,47 @@
                 rect: el.getBoundingClientRect().toJSON()
             }));
 
+        // Почему модал не обработан — главный вопрос следующего теста. Без
+        // этого по отчёту не отличить «селектор промахнулся» от «признак
+        // показа не сработал»: в разметке оба выглядят одинаково.
+        const modalSelector = [FULLSCREEN_MODAL_SELECTOR, PROMO_INTERSTITIAL_SELECTOR].join(', ');
+        const modals = Array.from(document.querySelectorAll(modalSelector))
+            .slice(0, 12)
+            .map(el => {
+                const promo = el.matches(PROMO_INTERSTITIAL_SELECTOR);
+                const contentSelector = promo ? PROMO_CONTENT_SELECTOR : AD_CONTENT_SELECTOR;
+                const content = el.querySelector(contentSelector);
+                const closeSelector = promo ? PROMO_CLOSE_SELECTOR : CLOSE_BUTTON_SELECTOR;
+                return {
+                    tag: el.tagName,
+                    class: el.getAttribute('class'),
+                    rect: el.getBoundingClientRect().toJSON(),
+                    kind: promo ? 'promo' : (isRewardedModal(el) ? 'rewarded' : 'fullscreen'),
+                    isAdvModal: promo ? true : isAdvModal(el),
+                    // Ключевой флаг: false при живой рекламе на экране —
+                    // значит, промахнулся contentSelector.
+                    isModalShown: isModalShown(el, contentSelector),
+                    contentFound: content ? {
+                        tag: content.tagName,
+                        class: content.getAttribute('class'),
+                        id: content.id || null,
+                        rect: content.getBoundingClientRect().toJSON()
+                    } : null,
+                    closeButtonFound: Boolean(findCloseButton(el, closeSelector)),
+                    // Какие вообще кнопки есть внутри — по ним видно, как
+                    // платформа назвала крестик, если наш селектор промахнулся.
+                    buttons: Array.from(el.querySelectorAll('button')).slice(0, 6).map(b => ({
+                        class: b.getAttribute('class'),
+                        testid: b.getAttribute('data-testid'),
+                        label: b.getAttribute('aria-label'),
+                        disabled: b.disabled || b.getAttribute('aria-disabled') === 'true'
+                    })),
+                    dismissing: dismissing.has(el),
+                    hidden: el.getAttribute(HIDDEN_ATTR) === '1',
+                    inlineStyle: el.getAttribute('style')
+                };
+            });
+
         return {
             url: location.href,
             blockedOnPage: pageBlocked,
@@ -1046,6 +1180,16 @@
                 ? Array.from(frame.parentElement.parentElement.children).map(describe)
                 : [],
             suspects,
+            modals,
+            // Покрыт ли origin фрейма игры в manifest. Пустой sdkEvents при
+            // sdkHookInFrame: false означает, что include_globs промахнулись
+            // и реклама через SDK идёт мимо заглушки.
+            sdkHookInFrame: sdkEvents.some(event => event.kind === 'sdk-hook-loaded' && event.detail === 'iframe'),
+            activeElement: document.activeElement ? {
+                tag: document.activeElement.tagName,
+                id: document.activeElement.id || null,
+                class: document.activeElement.getAttribute('class')
+            } : null,
             bannerHTML: banner ? banner.outerHTML.slice(0, 1500) : null
         };
     }
