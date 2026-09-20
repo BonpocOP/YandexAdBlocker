@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Yandex Games AdBlocker",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "description": "Убирает рекламу на Яндекс.Играх и растягивает игру на освободившееся место.",
   "icons": {
     "16": "icons/icon16.png",
@@ -32,7 +32,15 @@
         "*://*.games.s3.yandex.net/*"
       ],
       "js": [
-        "src/content.js"
+        "src/content/config.js",
+        "src/content/state.js",
+        "src/content/dom.js",
+        "src/content/layout.js",
+        "src/content/ui.js",
+        "src/content/modals.js",
+        "src/content/scan.js",
+        "src/content/report.js",
+        "src/content/main.js"
       ],
       "css": [
         "src/blocker.css"
