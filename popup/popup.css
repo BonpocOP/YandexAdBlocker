@@ -69,6 +69,16 @@ body {
     pointer-events: none;
 }
 
+/* Настройка конкретной игры, а не расширения целиком — отделена отступом. */
+.options_game {
+    margin-top: 8px;
+}
+
+/* .options задаёт фон и радиус, поэтому hidden сам по себе список не спрячет. */
+[hidden] {
+    display: none !important;
+}
+
 .option__label {
     display: flex;
     flex-direction: column;

@@ -160,7 +160,16 @@
     // адблок, и потребует его отключить. Не трогаем никогда.
     const BAIT_SELECTOR = '#AdBanner, .AdsBox, [class*="ad_box"], [class*="ad_banner"], [class*="Ad_container"]';
 
+    // Растягивание по ширине выключается для отдельной игры, а не для всех
+    // сразу: одни игры пересчитывают канвас по новому размеру и занимают место
+    // целиком, другие держат свои пропорции и оказываются в рамке не по
+    // центру. Со стороны страницы это не отличить — канвас лежит в
+    // кросс-доменном фрейме, его геометрию не измерить. Поэтому решение за
+    // игроком, а расширение помнит его для каждой игры.
+    const NO_STRETCH_KEY = 'noStretchGames';
+
     let settings = { ...DEFAULTS };
+    let noStretchGames = [];
     let observer = null;
     let shellObserver = null;
     let scanTimer = null;
@@ -192,6 +201,24 @@
 
     const isTopGamePage = () => location.pathname.startsWith('/games') && window.top === window.self;
     const isGameAppPage = () => location.pathname.startsWith('/games/app');
+
+    // Адрес игры — /games/app/<slug>-<id>. Числовой хвост и есть идентификатор:
+    // slug Яндекс меняет вместе с названием, а id остаётся.
+    function gameId() {
+        const match = location.pathname.match(/\/games\/app\/(?:.*-)?(\d+)/);
+        if (match) {
+            return match[1];
+        }
+        const fallback = location.pathname.match(/\/games\/app\/([^/?#]+)/);
+        return fallback ? fallback[1] : null;
+    }
+
+    // Растягивать ли фрейм по ширине. Высота растягивается всегда: место из-под
+    // нижнего баннера игре нужно отдать в любом случае.
+    function widthStretchAllowed() {
+        const id = gameId();
+        return !id || !noStretchGames.includes(id);
+    }
 
     function force(el, prop, value) {
         touched.push({
@@ -451,9 +478,15 @@
         }
 
         let changed = false;
+        // Когда игрок отключил растягивание по ширине, резерв под боковой блок
+        // не трогаем: пусть страница сама решает ширину, а обёртку по центру
+        // поставит правило из blocker.css.
+        const props = widthStretchAllowed()
+            ? ['width', 'height', 'max-width', 'max-height']
+            : ['height', 'max-height'];
         const shell = [frame].concat(ancestorChain(frame, 4));
         for (const el of shell) {
-            for (const prop of ['width', 'height', 'max-width', 'max-height']) {
+            for (const prop of props) {
                 const inline = el.style.getPropertyValue(prop);
                 // После нашей правки в инлайне стоит 100% — регулярка больше
                 // не совпадёт, повторных записей не будет.
@@ -467,6 +500,31 @@
         if (changed) {
             kickResize();
         }
+    }
+
+    // Игра внутри фрейма считает размер канваса, когда загрузится, — а это
+    // заметно позже, чем отрабатывает расширение. Если к тому моменту она уже
+    // сняла мерку со старого размера, ни один наш пересчёт до неё не дошёл.
+    // Поэтому пинаем resize ещё раз по событию load фрейма и потом с
+    // задержкой: движки досчитывают геометрию асинхронно.
+    let lateKicksArmed = false;
+    function armLateKicks() {
+        const frame = gameFrame();
+        if (!frame || lateKicksArmed) {
+            return;
+        }
+        lateKicksArmed = true;
+
+        const kick = () => {
+            fixGameShell();
+            kickResize();
+        };
+        frame.addEventListener('load', () => {
+            kick();
+            setTimeout(kick, 800);
+        }, { once: true });
+        setTimeout(kick, 1500);
+        setTimeout(kick, 3500);
     }
 
     // Скрипт страницы переписывает инлайн-стиль обёртки при своих пересчётах,
@@ -515,12 +573,41 @@
                 parent = outer.parentElement;
             }
 
-            const height = outer.getBoundingClientRect().height;
+            const rect = outer.getBoundingClientRect();
+            const height = rect.height;
             if (hide(outer) && height >= MIN_BANNER_HEIGHT) {
                 lastBannerParent = outer.parentElement;
+                hideEmptyColumn(outer, rect);
                 relayout(height);
             }
         });
+    }
+
+    // Боковой блок лежит в собственной обёртке, и она остаётся в потоке даже
+    // после того, как содержимое скрыто: в отчёте это 315x948 на x = 1597,
+    // ровно поверх правого края растянутой игры. Полоса невидима, но занимает
+    // место и перехватывает клики.
+    //
+    // Ищем по измерениям, а не по классу: класс обёртки хеширован. Признак —
+    // родитель той же ширины, что и скрытый блок, узкий по меркам экрана и без
+    // фрейма игры внутри. Последнее условие обязательно: без него под нож
+    // попала бы обёртка самой игры.
+    function hideEmptyColumn(el, rect) {
+        if (rect.width < 100 || rect.width > window.innerWidth * 0.4) {
+            return;
+        }
+
+        let parent = el.parentElement;
+        let depth = 0;
+        while (parent && parent !== document.body && depth < 3) {
+            const parentRect = parent.getBoundingClientRect();
+            if (!near(parentRect.width, rect.width, 8) || parent.querySelector('iframe')) {
+                return;
+            }
+            hide(parent, { allowButtons: true });
+            parent = parent.parentElement;
+            depth += 1;
+        }
     }
 
     function scanDisableAdvButton() {
@@ -999,6 +1086,7 @@
         if (settings.sticky && isGameAppPage()) {
             fixGameShell();
             watchShell();
+            armLateKicks();
         }
     }
 
@@ -1025,6 +1113,7 @@
     }
 
     function stopObserver() {
+        lateKicksArmed = false;
         if (observer) {
             observer.disconnect();
             observer = null;
@@ -1060,6 +1149,9 @@
         // Растягивание фрейма относится к тому же тумблеру, что и баннер:
         // без баннера место всё равно надо отдать игре.
         flag('data-ygab-layout', settings.sticky);
+        // Отдельно — растягивание по ширине: его игрок выключает для
+        // конкретной игры, если та смотрится в рамке не по центру.
+        flag('data-ygab-stretch', widthStretchAllowed());
     }
 
     function applyState() {
@@ -1200,7 +1292,15 @@
                 return;
             }
             if (request.action === 'getStats') {
-                sendResponse({ blockedOnPage: pageBlocked, isGamePage: isTopGamePage() });
+                sendResponse({
+                    blockedOnPage: pageBlocked,
+                    isGamePage: isTopGamePage(),
+                    // Попапу нужно знать, есть ли на этой вкладке игра и
+                    // растягивается ли она: тумблер показывается только там.
+                    gameId: gameId(),
+                    isGameApp: isGameAppPage(),
+                    widthStretch: widthStretchAllowed()
+                });
             } else if (request.action === 'getReport') {
                 sendResponse({ report: buildReport() });
             }
@@ -1218,13 +1318,19 @@
                 dirty = true;
             }
         }
+        if (NO_STRETCH_KEY in changes) {
+            const next = changes[NO_STRETCH_KEY].newValue;
+            noStretchGames = Array.isArray(next) ? next : [];
+            dirty = true;
+        }
         if (dirty) {
             applyState();
         }
     });
 
-    chrome.storage.sync.get(DEFAULTS, stored => {
+    chrome.storage.sync.get({ ...DEFAULTS, [NO_STRETCH_KEY]: [] }, stored => {
         settings = { ...DEFAULTS, ...stored };
+        noStretchGames = Array.isArray(stored[NO_STRETCH_KEY]) ? stored[NO_STRETCH_KEY] : [];
         applyState();
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', scan, { once: true });

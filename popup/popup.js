@@ -16,7 +16,16 @@
         inputs[key] = document.getElementById(key);
     });
 
+    // Растягивание по ширине запоминается для каждой игры отдельно: одни игры
+    // занимают освободившееся место целиком, другие держат пропорции и
+    // смотрятся в рамке не по центру.
+    const NO_STRETCH_KEY = 'noStretchGames';
+
     const statusEl = document.getElementById('status');
+    const gameOptionsEl = document.getElementById('gameOptions');
+    const gameHintEl = document.getElementById('gameHint');
+    const widthStretchEl = document.getElementById('widthStretch');
+    let currentGameId = null;
     const optionsEl = document.getElementById('options');
     const pageCountEl = document.getElementById('pageCount');
     const totalCountEl = document.getElementById('totalCount');
@@ -29,6 +38,21 @@
     function reflectMasterSwitch() {
         // Частные тумблеры без общего смысла не имеют — гасим их визуально.
         optionsEl.classList.toggle('options_disabled', !inputs.enabled.checked);
+        gameOptionsEl.classList.toggle('options_disabled', !inputs.enabled.checked);
+    }
+
+    // Тумблер показывается только на странице запущенной игры: в каталоге
+    // растягивать нечего, и настройка была бы непонятно к чему.
+    function reflectGameOption(stats) {
+        const show = Boolean(stats && stats.isGameApp && stats.gameId);
+        gameOptionsEl.hidden = !show;
+        if (!show) {
+            currentGameId = null;
+            return;
+        }
+        currentGameId = stats.gameId;
+        widthStretchEl.checked = stats.widthStretch !== false;
+        gameHintEl.textContent = 'Только для этой игры (#' + stats.gameId + ')';
     }
 
     function activeTab() {
@@ -63,10 +87,12 @@
         if (!stats) {
             setStatus('Откройте yandex.ru/games — здесь расширение не работает', true);
             pageCountEl.textContent = '0';
+            reflectGameOption(null);
             return;
         }
 
         pageCountEl.textContent = stats.blockedOnPage;
+        reflectGameOption(stats);
         setStatus(inputs.enabled.checked ? 'Блокировка активна' : 'Блокировка выключена', !inputs.enabled.checked);
     }
 
@@ -80,6 +106,21 @@
             });
         });
     }
+
+    // Список храним, а не флаг на игру: так настройка переезжает вместе с
+    // синхронизацией профиля и не засоряет хранилище ключом на каждую игру.
+    widthStretchEl.addEventListener('change', () => {
+        if (!currentGameId) {
+            return;
+        }
+        chrome.storage.sync.get({ [NO_STRETCH_KEY]: [] }, stored => {
+            const list = Array.isArray(stored[NO_STRETCH_KEY]) ? stored[NO_STRETCH_KEY] : [];
+            const next = widthStretchEl.checked
+                ? list.filter(id => id !== currentGameId)
+                : list.concat(list.includes(currentGameId) ? [] : [currentGameId]);
+            chrome.storage.sync.set({ [NO_STRETCH_KEY]: next });
+        });
+    });
 
     document.getElementById('reload').addEventListener('click', async () => {
         const tab = await activeTab();

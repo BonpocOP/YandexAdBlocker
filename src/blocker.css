@@ -60,12 +60,35 @@ html:not([data-ygab="off"]):not([data-ygab-catalog="off"]) [id*="yandex_rtb"] {
  * !important в таблице стилей перебивает инлайн-стиль, так что размер
  * держится, даже когда скрипт страницы пересчитывает calc заново.
  */
+/* Высота — всегда: место из-под нижнего баннера игре нужно отдать в любом
+   случае, на пропорции картинки это не влияет. */
 html:not([data-ygab="off"]):not([data-ygab-layout="off"]) div:has(> iframe#game-frame),
 html:not([data-ygab="off"]):not([data-ygab-layout="off"]) iframe#game-frame {
-    width: 100% !important;
     height: 100% !important;
-    max-width: 100% !important;
     max-height: 100% !important;
+}
+
+/*
+ * Ширина — отдельным правилом, потому что её игрок выключает для конкретной
+ * игры. Одни игры пересчитывают канвас по новому размеру и занимают место
+ * целиком, другие держат свои пропорции и оказываются в рамке не по центру.
+ * Со стороны страницы это не отличить: канвас лежит в кросс-доменном фрейме,
+ * его геометрию не измерить.
+ */
+html:not([data-ygab="off"]):not([data-ygab-layout="off"]):not([data-ygab-stretch="off"]) div:has(> iframe#game-frame),
+html:not([data-ygab="off"]):not([data-ygab-layout="off"]):not([data-ygab-stretch="off"]) iframe#game-frame {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/*
+ * Растягивание по ширине выключено: игра остаётся своей ширины, но место из-под
+ * убранной колонки делится поровну. Без этого игра прижималась бы влево, а
+ * справа висела бы пустая полоса в 315px.
+ */
+html:not([data-ygab="off"]):not([data-ygab-layout="off"])[data-ygab-stretch="off"] div:has(> iframe#game-frame) {
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
 
 /*
