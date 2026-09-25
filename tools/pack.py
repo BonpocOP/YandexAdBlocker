@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def manifest_files(manifest):
-    files = {'manifest.json', 'README.md'}
+    # LICENSE — GPL требует распространять текст лицензии вместе с программой.
+    files = {'manifest.json', 'README.md', 'LICENSE'}
     files.update(manifest.get('icons', {}).values())
 
     popup = manifest.get('action', {}).get('default_popup')
@@ -27,6 +28,10 @@ def manifest_files(manifest):
         # Попап тянет свои css и js из той же папки.
         folder = (ROOT / popup).parent
         files.update(str(p.relative_to(ROOT)).replace('\\', '/') for p in folder.iterdir() if p.is_file())
+
+    worker = manifest.get('background', {}).get('service_worker')
+    if worker:
+        files.add(worker)
 
     for script in manifest.get('content_scripts', []):
         files.update(script.get('js', []))

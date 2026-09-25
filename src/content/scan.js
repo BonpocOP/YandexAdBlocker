@@ -76,15 +76,13 @@ function scanNoAdsPopup() {
 
 
 function scanFullscreen() {
-    if (!settings.fullscreen && !settings.rewarded) {
-        return;
-    }
+    traceModalStates();
     document.querySelectorAll(FULLSCREEN_MODAL_SELECTOR).forEach(modal => {
         if (!isAdvModal(modal) || modal.hasAttribute(REVEALED_ATTR)) {
             return;
         }
         const rewarded = isRewardedModal(modal);
-        if (!(rewarded ? settings.rewarded : settings.fullscreen)) {
+        if (!(rewarded || settings.fullscreen)) {
             return;
         }
 
@@ -177,7 +175,14 @@ function scheduleScan() {
     // Разметка прилетает пачками мутаций — склеиваем их в один проход.
     scanTimer = setTimeout(() => {
         scanTimer = null;
+        const started = performance.now();
         scan();
+        const spent = performance.now() - started;
+        activity.scans += 1;
+        activity.scanMs += spent;
+        activityTotal.scans += 1;
+        activityTotal.scanMs += spent;
+        activityTotal.maxScanMs = Math.max(activityTotal.maxScanMs, spent);
     }, 150);
 }
 
@@ -193,10 +198,35 @@ function scheduleScan() {
 // ли его игре, надо уже по итогу.
 function onTabVisible() {
     note(document.hidden ? 'tab-hidden' : 'tab-visible', focusLabel());
-    if (!document.hidden) {
-        scheduleScan();
-        setTimeout(restoreGameFocus, 200);
+    if (document.hidden) {
+        clearInterval(wakeTimer);
+        wakeTimer = null;
+        resetActivity();
+        return;
     }
+    // Что мы успели натворить, пока вкладка спала.
+    note('hidden-activity', activitySnapshot());
+    startWakeSampler();
+    scheduleScan();
+    setTimeout(restoreGameFocus, 200);
+}
+
+// Первые 20 секунд после возврата — посекундная картина нашей активности,
+// по одной записи на 2 секунды.
+let wakeTimer = null;
+function startWakeSampler() {
+    clearInterval(wakeTimer);
+    resetActivity();
+    let ticks = 0;
+    wakeTimer = setInterval(() => {
+        ticks += 1;
+        note('wake', activitySnapshot());
+        resetActivity();
+        if (ticks >= 10) {
+            clearInterval(wakeTimer);
+            wakeTimer = null;
+        }
+    }, 2000);
 }
 
 // Фокус окна без смены вкладки — например, возврат из другого окна. Здесь
@@ -251,6 +281,17 @@ function stopObserver() {
         observer.disconnect();
         observer = null;
     }
+    clearInterval(wakeTimer);
+    wakeTimer = null;
+    if (frameResizeObserver) {
+        frameResizeObserver.disconnect();
+        frameResizeObserver = null;
+    }
+    if (modalObserver) {
+        modalObserver.disconnect();
+        modalObserver = null;
+    }
+    watchedModals = new WeakSet();
     if (shellObserver) {
         shellObserver.disconnect();
         shellObserver = null;
@@ -260,14 +301,22 @@ function stopObserver() {
 /* ---------- состояние и связь с попапом ---------- */
 
 // MAIN-world скрипт не имеет доступа к chrome.storage, поэтому настройки
-// для него кладём в атрибут <html>, а он читает их в момент вызова рекламы.
+// ему отдаём событием EV_CFG. Хук может запуститься позже нас — тогда он сам
+// попросит их событием EV_ASK.
 function publishSdkSettings() {
-    document.documentElement.setAttribute(SDK_ATTR, JSON.stringify({
-        enabled: settings.enabled,
-        fullscreen: settings.fullscreen,
-        rewarded: settings.rewarded
+    document.dispatchEvent(new CustomEvent(EV_CFG, {
+        detail: JSON.stringify({
+            enabled: settings.enabled,
+            fullscreen: settings.fullscreen,
+            rewarded: settings.rewarded
+        })
     }));
 }
+document.addEventListener(EV_ASK, () => {
+    if (settings) {
+        publishSdkSettings();
+    }
+});
 
 // Атрибуты на <html> управляют правилами blocker.css: так выключенный
 // тумблер возвращает рекламу на место без перезагрузки страницы.
@@ -278,7 +327,7 @@ function publishCssFlags() {
     flag('data-ygab-sticky', settings.sticky);
     flag('data-ygab-catalog', settings.catalog);
     flag('data-ygab-fullscreen', settings.fullscreen);
-    flag('data-ygab-rewarded', settings.rewarded);
+    flag('data-ygab-rewarded', true);
     // Растягивание фрейма относится к тому же тумблеру, что и баннер:
     // без баннера место всё равно надо отдать игре.
     flag('data-ygab-layout', settings.sticky);
@@ -310,7 +359,7 @@ function applyState() {
     suppressCount = false;
     // После пересканирования счётчик приводим к тому, что реально скрыто:
     // набор правил мог сузиться.
-    pageBlocked = document.querySelectorAll('[' + HIDDEN_ATTR + '="1"]').length;
+    pageBlocked = Array.from(hiddenNodes).filter(el => el.isConnected).length;
     kickResize();
 }
 

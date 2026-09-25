@@ -149,6 +149,7 @@ function kickResize() {
         return;
     }
     lastKick = now;
+    activity.kicks += 1;
     window.dispatchEvent(new Event('resize'));
     if (window.visualViewport) {
         window.visualViewport.dispatchEvent(new Event('resize'));
@@ -286,7 +287,30 @@ function watchShell() {
     if (!frame || shellObserver) {
         return;
     }
-    shellObserver = new MutationObserver(scheduleScan);
+    shellObserver = new MutationObserver(records => {
+        activity.shellMutations += records.length;
+        scheduleScan();
+    });
+    // Каждое изменение размера фрейма игры — повод для игры заново выделить
+    // холст. Пишем первые 20 разных размеров в журнал, остальные — счётчиком.
+    if (typeof ResizeObserver === 'function') {
+        let lastSize = '';
+        let logged = 0;
+        frameResizeObserver = new ResizeObserver(entries => {
+            const rect = entries[0].contentRect;
+            const size = Math.round(rect.width) + 'x' + Math.round(rect.height);
+            if (size === lastSize) {
+                return;
+            }
+            lastSize = size;
+            activity.frameResizes += 1;
+            if (logged < 20) {
+                logged += 1;
+                note('frame-resize', size);
+            }
+        });
+        frameResizeObserver.observe(frame);
+    }
     [frame].concat(ancestorChain(frame, 3)).forEach(el => {
         shellObserver.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
     });

@@ -9,6 +9,10 @@ if (chrome.runtime && chrome.runtime.onMessage) {
         if (!request || orphaned) {
             return;
         }
+        if (request.what === 'ygab:frame-diag') {
+            handleHookEvent(request.event);
+            return;
+        }
         if (request.action === 'getStats') {
             sendResponse({
                 blockedOnPage: pageBlocked,

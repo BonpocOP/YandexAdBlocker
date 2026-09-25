@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "avito",
+  "version": "2026.09.25.2",
+  "sites": [
+    {
+      "hosts": [
+        "avito.ru",
+        "*.avito.ru"
+      ]
+    }
+  ],
+  "notes": "Общий механизм закрывает все дыры на снимках Авито без правил слотов (docs/rules-schema.md, проверка dev/apply-rules.mjs --generic): 0 задетых карточек. Поэтому здесь только защита настоящего контента. Правила слотов из первой версии удалены — они повторяли то, что механизм находит сам, и ломались бы при переименовании.",
+  "protect": [
+    "[data-marker=\"item\"]",
+    "[data-marker=\"bx-recommendations-block-item\"]",
+    "[data-marker^=\"search-form\"]",
+    "[data-marker^=\"params[\"]",
+    "[data-marker=\"header/navbar\"]"
+  ],
+  "slots": []
+}

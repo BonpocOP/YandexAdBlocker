@@ -10,6 +10,28 @@ let settings = { ...DEFAULTS };
 let noStretchGames = [];
 let observer = null;
 let shellObserver = null;
+let frameResizeObserver = null;
+let modalObserver = null;
+
+// Счётчики нашей активности — для отчёта. После пробуждения вкладки игра
+// тормозила и рвала звук, а без расширения — нет. Чтобы понять, не мы ли
+// грузим страницу, считаем свои проходы, записи стилей, resize и изменения
+// размера фрейма игры и пишем их в журнал посекундно после возврата.
+const activity = { scans: 0, scanMs: 0, forces: 0, kicks: 0, shellMutations: 0, frameResizes: 0 };
+
+// То же нарастающим итогом с загрузки страницы — для бюджета скорости в
+// тестах и для отчёта.
+const activityTotal = { scans: 0, scanMs: 0, maxScanMs: 0 };
+
+function resetActivity() {
+    for (const key of Object.keys(activity)) {
+        activity[key] = 0;
+    }
+}
+
+function activitySnapshot() {
+    return { ...activity, scanMs: Math.round(activity.scanMs) };
+}
 let scanTimer = null;
 let pageBlocked = 0;
 let pendingTotal = 0;
@@ -24,7 +46,7 @@ const touched = [];
 // Журнал последних событий для отчёта. Отчёт снимают уже после того, как всё
 // случилось, и по снимку разметки не видно, что было минутой раньше: была ли
 // реклама, чем кончилось её закрытие, куда ушёл фокус при смене вкладки.
-const JOURNAL_LIMIT = 60;
+const JOURNAL_LIMIT = 120;
 const journal = [];
 const journalStart = Date.now();
 
@@ -56,15 +78,69 @@ function focusLabel() {
 // Слушателя ставим синхронно, до чтения настроек: хук рапортует о загрузке
 // сразу на document_start.
 const sdkEvents = [];
-window.addEventListener('message', event => {
-    const data = event.data;
-    if (!data || typeof data !== 'object' || typeof data.__ygab !== 'string') {
+// Сводка сообщений платформы во фрейм игры (см. sdk-hook.js). Время
+// переводим в секунды журнала, чтобы сводка читалась на одной шкале с ним.
+let frameMessages = null;
+
+const journalTime = ms => Math.round((ms - journalStart) / 100) / 10;
+
+// Событие хука — JSON-строка: объект из MAIN world через границу миров не
+// проходит, строка проходит. Приходит двумя путями: из хука на этой же
+// странице — событием EV_DIAG, из фрейма игры — через frame.js и фоновый
+// скрипт (см. main.js).
+function handleHookEvent(raw) {
+    let data;
+    try {
+        data = JSON.parse(raw);
+    } catch (e) {
+        return;
+    }
+    if (!data || typeof data.kind !== 'string') {
+        return;
+    }
+    if (data.kind === 'frame-messages' && data.detail && typeof data.detail === 'object') {
+        frameMessages = {};
+        for (const [type, entry] of Object.entries(data.detail)) {
+            frameMessages[type] = { count: entry.count, first: journalTime(entry.first), last: journalTime(entry.last) };
+        }
         return;
     }
     if (sdkEvents.length < 30) {
-        sdkEvents.push({ kind: data.__ygab, detail: data.detail, href: data.href });
+        sdkEvents.push({ t: journalTime(data.at || Date.now()), kind: data.kind, detail: data.detail, href: data.href });
     }
-});
+    // Вызов рекламы игрой — в общий журнал, чтобы видеть его рядом со сменой
+    // вкладки и закрытием окон платформы.
+    if (data.kind === 'sdk-call') {
+        note('sdk-call', data.detail);
+    }
+}
+
+// Отчёт собирается в верхнем документе. Во фреймах игр на games.s3 этот же
+// скрипт тоже работает, но их хук отчитывается через frame.js — здесь его
+// не слушаем, чтобы не считать события дважды.
+if (window.top === window) {
+    document.addEventListener(EV_DIAG, event => handleHookEvent(event.detail));
+}
+
+// Флажки из попапа «что ещё включено» — для отчёта. Кэш: отчёт собирается
+// синхронно, а хранилище асинхронное.
+let environmentFlags = {};
+try {
+    chrome.storage.local.get({ environmentFlags: {} }, stored => {
+        environmentFlags = stored.environmentFlags || {};
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.environmentFlags) {
+            environmentFlags = changes.environmentFlags.newValue || {};
+        }
+    });
+} catch (e) {
+    /* контекст оборван — флажки не критичны */
+}
+
+// Узлы, которые мы спрятали. Раньше они помечались атрибутом
+// data-ygab-hidden — его видно в разметке любому скрипту страницы.
+const hiddenNodes = new Set();
 
 
 /* ---------- осиротевший скрипт ---------- */

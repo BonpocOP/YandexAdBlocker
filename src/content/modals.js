@@ -112,9 +112,107 @@ function isStuckModal(modal, contentSelector = AD_CONTENT_SELECTOR, threshold = 
     if (!since) {
         stuckSince.set(modal, Date.now());
         note('stuck-wait', modalLabel(modal));
+        // Проход ровно к концу выдержки. Без него решение ждало бы следующего
+        // изменения страницы или контрольного прохода раз в 2 секунды — у
+        // пустой оболочки без крестика это давало до 4 секунд вместо 1,5.
+        setTimeout(scheduleScan, threshold + 50);
         return false;
     }
     return Date.now() - since >= threshold;
+}
+
+// Журнал состояний рекламных контейнеров для отчёта. Наши действия журнал
+// видит и так, а что делала страница до них — нет. Из-за этого 15 секунд
+// между возвратом во вкладку и закрытием промо в отчёте остались пустым
+// местом. Пишем каждое изменение: размер, положение, видимость, есть ли
+// содержимое и что лежит в центре экрана, — и включение «режима окна»
+// платформы на body.
+const lastModalState = new WeakMap();
+let lastPlatformModal = null;
+
+function centerLabel() {
+    const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    if (!el) {
+        return null;
+    }
+    const cls = typeof el.className === 'string' && el.className
+        ? '.' + el.className.trim().split(/\s+/)[0]
+        : '';
+    return el.tagName + (el.id ? '#' + el.id : '') + cls;
+}
+
+function modalState(modal, contentSelector) {
+    let style;
+    try {
+        style = getComputedStyle(modal);
+    } catch (e) {
+        return null;
+    }
+    const rect = modal.getBoundingClientRect();
+    return {
+        onScreen: isModalOnScreen(modal),
+        content: hasRenderedContent(modal, contentSelector),
+        size: Math.round(rect.width) + 'x' + Math.round(rect.height),
+        at: Math.round(rect.left) + ',' + Math.round(rect.top),
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity
+    };
+}
+
+// Платформа показывает свои окна, меняя класс или стиль уже существующего
+// узла, а не вставляя новый. Основной наблюдатель смотрит только на
+// добавление узлов, и такое появление замечал лишь контрольный проход раз в
+// 2 секунды. Поэтому за самими окнами следим по атрибутам.
+// Сбрасывается вместе с наблюдателем в stopObserver: после смены настроек
+// за окнами надо следить заново.
+let watchedModals = new WeakSet();
+
+function watchModal(modal) {
+    if (watchedModals.has(modal)) {
+        return;
+    }
+    if (!modalObserver) {
+        modalObserver = new MutationObserver(scheduleScan);
+    }
+    watchedModals.add(modal);
+    modalObserver.observe(modal, { attributes: true, attributeFilter: ['class', 'style'] });
+}
+
+function traceModalStates() {
+    const platformModal = document.body.classList.contains('main-body_modal_yes');
+    if (platformModal !== lastPlatformModal) {
+        lastPlatformModal = platformModal;
+        note('platform-modal', platformModal);
+    }
+
+    const candidates = [];
+    document.querySelectorAll(FULLSCREEN_MODAL_SELECTOR).forEach(el => {
+        candidates.push([el, AD_CONTENT_SELECTOR]);
+    });
+    document.querySelectorAll(PROMO_INTERSTITIAL_SELECTOR).forEach(el => {
+        candidates.push([outermost(el, PROMO_INTERSTITIAL_SELECTOR), PROMO_CONTENT_SELECTOR]);
+    });
+
+    for (const [modal, contentSelector] of candidates) {
+        watchModal(modal);
+        const state = modalState(modal, contentSelector);
+        if (!state) {
+            continue;
+        }
+        const key = JSON.stringify(state);
+        if (lastModalState.get(modal) === key) {
+            continue;
+        }
+        const first = !lastModalState.has(modal);
+        lastModalState.set(modal, key);
+        // Припаркованные за краем экрана модалы есть всегда; первую встречу
+        // с ними не пишем, иначе журнал забьётся. Их выход на экран — пишем.
+        if (first && !state.onScreen) {
+            continue;
+        }
+        note('modal-state', { modal: modalLabel(modal), ...state, center: centerLabel() });
+    }
 }
 
 // Звук рекламы в скрытом модале продолжает играть. Для медиа в самом

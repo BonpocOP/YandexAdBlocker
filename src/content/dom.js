@@ -36,6 +36,7 @@ function force(el, prop, value) {
         priority: el.style.getPropertyPriority(prop)
     });
     el.style.setProperty(prop, value, 'important');
+    activity.forces += 1;
 }
 
 function restoreEntry({ el, prop, prev, priority }) {
@@ -88,7 +89,17 @@ function outermost(el, selector) {
 /* ---------- скрытие ---------- */
 
 function hide(el, options = {}) {
-    if (!el || el.getAttribute(HIDDEN_ATTR) === '1') {
+    if (!el) {
+        return false;
+    }
+    // Узел уже спрятан, но страница могла переписать ему стиль целиком —
+    // тогда реклама вернулась бы до перезагрузки. Раньше её держало ещё и
+    // CSS-правило по атрибуту-метке; метки больше нет, поэтому стиль
+    // восстанавливаем здесь, на каждом проходе.
+    if (hiddenNodes.has(el)) {
+        if (el.style.getPropertyValue('display') !== 'none' || el.style.getPropertyPriority('display') !== 'important') {
+            el.style.setProperty('display', 'none', 'important');
+        }
         return false;
     }
 
@@ -103,9 +114,7 @@ function hide(el, options = {}) {
         return false;
     }
 
-    el.setAttribute(HIDDEN_ATTR, '1');
-    // Дублируем CSS инлайном: страница перерисовывает баннер и может
-    // навесить свои стили поверх нашего файла.
+    hiddenNodes.add(el);
     el.style.setProperty('display', 'none', 'important');
 
     // При пересканировании после смены настроек блоки те же самые —
@@ -119,8 +128,8 @@ function hide(el, options = {}) {
 }
 
 function unhideAll() {
-    document.querySelectorAll('[' + HIDDEN_ATTR + '="1"]').forEach(el => {
-        el.removeAttribute(HIDDEN_ATTR);
+    hiddenNodes.forEach(el => {
         el.style.removeProperty('display');
     });
+    hiddenNodes.clear();
 }

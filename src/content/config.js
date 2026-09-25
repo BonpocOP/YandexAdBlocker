@@ -14,10 +14,17 @@ const DEFAULTS = {
     catalog: true
 };
 
-const HIDDEN_ATTR = 'data-ygab-hidden';
-const SDK_ATTR = 'data-ygab-sdk';
 // Модал, который игрок вернул кнопкой «Показать рекламу».
 const REVEALED_ATTR = 'data-ygab-revealed';
+
+// Каналы связи с хуком SDK в MAIN world (sdk-hook.js, frame.js) — события на
+// document. Раньше настройки лежали атрибутом на <html>, а диагностика
+// рассылалась postMessage на '*': и то и другое видно странице без всяких
+// усилий. Событие видно только тому, кто заранее знает его имя, поэтому имена
+// ничего не говорят. Менять — синхронно во всех трёх файлах.
+const EV_CFG = 'hx7pfq';
+const EV_ASK = 'hx7pfr';
+const EV_DIAG = 'kt3wmz';
 
 // Sticky-баннер внутри запущенной игры. Совпадение по подстроке, а не по
 // полному классу: Яндекс регулярно меняет модификаторы вроде

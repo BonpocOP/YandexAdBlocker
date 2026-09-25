@@ -1,0 +1,11 @@
+[
+  "config.js",
+  "state.js",
+  "dom.js",
+  "layout.js",
+  "ui.js",
+  "modals.js",
+  "scan.js",
+  "report.js",
+  "main.js"
+]

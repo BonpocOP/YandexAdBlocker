@@ -6,7 +6,6 @@
         enabled: true,
         sticky: true,
         fullscreen: true,
-        rewarded: true,
         catalog: true
     };
 
@@ -71,6 +70,40 @@
             });
         });
     }
+
+    // Новая версия: её находит фоновый скрипт (src/background.js), здесь
+    // только показываем ссылку.
+    function reflectUpdate() {
+        const el = document.getElementById('update');
+        chrome.storage.local.get({ update: null }, ({ update }) => {
+            if (!update || !update.version) {
+                el.hidden = true;
+                return;
+            }
+            el.textContent = 'Доступна версия ' + update.version + ' — скачать';
+            el.href = update.url || 'https://github.com/BonpocOP/YandexAdBlocker/releases/latest';
+            el.hidden = false;
+        });
+    }
+    reflectUpdate();
+
+    // Флажки «что ещё включено» — только для отчёта, работу расширения не
+    // меняют.
+    const envInputs = Array.from(document.querySelectorAll('[data-env]'));
+    chrome.storage.local.get({ environmentFlags: {} }, ({ environmentFlags }) => {
+        envInputs.forEach(input => {
+            input.checked = Boolean(environmentFlags[input.dataset.env]);
+        });
+    });
+    envInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            const flags = {};
+            envInputs.forEach(item => {
+                flags[item.dataset.env] = item.checked;
+            });
+            chrome.storage.local.set({ environmentFlags: flags });
+        });
+    });
 
     async function refreshStats() {
         chrome.storage.local.get({ totalBlocked: 0 }, ({ totalBlocked }) => {

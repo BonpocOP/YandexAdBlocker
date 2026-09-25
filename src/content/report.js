@@ -81,7 +81,7 @@ function describeModal(el) {
             disabled: button.disabled || button.getAttribute('aria-disabled') === 'true'
         })),
         dismissing: dismissing.has(el),
-        hidden: el.getAttribute(HIDDEN_ATTR) === '1',
+        hidden: hiddenNodes.has(el),
         inlineStyle: el.getAttribute('style')
     };
 }
@@ -117,11 +117,87 @@ function collectModals() {
     return Array.from(document.querySelectorAll(selector)).slice(0, 12).map(describeModal);
 }
 
+// Следы окружения: соседние блокировщики, перевод страницы, сеть. Узнать
+// напрямую, какие расширения стоят, нельзя, но по следам видно. Вчерашний
+// баг «игра стоит после вкладки» такой блок помог бы разобрать сразу.
+const AD_TRACE_SELECTOR = '[id*="_R-A-"], [id^="yandex_rtb"], [id*="adfox"], ins.adsbygoogle, [class*="adv"], [class*="ads"], [class*="Adv"]';
+const AD_NETWORK_RE = /an\.yandex\.|yandex\.ru\/ads|adfox|yabs\.yandex|doubleclick|googlesyndication|ad\.mail\.ru|ads\.vk\.com/i;
+
+function collectEnvironment() {
+    // Рекламные узлы, спрятанные не нами: вычисленный display: none, а в
+    // нашем множестве спрятанного их нет.
+    let hiddenByOthers = 0;
+    let adTraces = 0;
+    for (const el of Array.from(document.querySelectorAll(AD_TRACE_SELECTOR)).slice(0, 500)) {
+        adTraces += 1;
+        if (hiddenNodes.has(el)) {
+            continue;
+        }
+        try {
+            if (getComputedStyle(el).display === 'none') {
+                hiddenByOthers += 1;
+            }
+        } catch (e) {
+            /* узел ушёл из документа — пропускаем */
+        }
+    }
+
+    // Приманки детекторов: если кто-то их спрятал — это не мы (мы их не трогаем).
+    const baits = Array.from(document.querySelectorAll(BAIT_SELECTOR)).slice(0, 5).map(el => {
+        const style = getComputedStyle(el);
+        return {
+            id: el.id || null,
+            hidden: style.display === 'none' || style.visibility === 'hidden' || el.getClientRects().length === 0,
+            // Спрятали ли её мы. Должно быть всегда false; если true — наш баг.
+            byUs: hiddenNodes.has(el)
+        };
+    });
+
+    // Запросы к рекламным сетям, которые дошли: если их ноль на странице с
+    // рекламой, их, скорее всего, режет сосед или сеть.
+    const adRequests = {};
+    for (const entry of performance.getEntriesByType('resource')) {
+        if (!AD_NETWORK_RE.test(entry.name)) {
+            continue;
+        }
+        let host;
+        try {
+            host = new URL(entry.name).hostname;
+        } catch (e) {
+            continue;
+        }
+        adRequests[host] = (adRequests[host] || 0) + 1;
+    }
+
+    const html = document.documentElement;
+    return {
+        adTraces,
+        hiddenByOthers,
+        baits,
+        adRequests,
+        lang: html.lang || null,
+        // Переводчик Chrome ставит на <html> классы translated-ltr/-rtl.
+        translated: /translated-(ltr|rtl)/.test(html.className),
+        // Что пользователь отметил в попапе сам.
+        userFlags: environmentFlags
+    };
+}
+
 function buildReport() {
     const banner = document.querySelector(STICKY_SELECTOR);
     const frame = largestFrame();
 
+    let version = null;
+    try {
+        version = chrome.runtime.getManifest().version;
+    } catch (e) {
+        /* контекст расширения оборван — версия не критична */
+    }
+
     return {
+        // Без версии не отличить «баг не исправлен» от «расширение не
+        // перезагружено после обновления».
+        version,
         url: location.href,
         blockedOnPage: pageBlocked,
         settings,
@@ -129,11 +205,22 @@ function buildReport() {
         // Пусто — значит sdk-hook.js не попал во фрейм игры и реклама
         // через SDK идёт мимо заглушки.
         sdkEvents,
+        // Какие сообщения платформа слала во фрейм игры и когда (секунды
+        // журнала). Отсюда видно, стояла ли игра на паузе по команде платформы.
+        frameMessages,
         // История: смена вкладки, закрытие рекламы, возврат фокуса. Время —
         // секунды от загрузки страницы; uptime — когда снят сам отчёт.
         uptime: Math.round((Date.now() - journalStart) / 100) / 10,
         journal,
         tabHidden: document.hidden,
+        environment: collectEnvironment(),
+        // Сколько стоили наши проходы с загрузки страницы, миллисекунды.
+        cost: {
+            scans: activityTotal.scans,
+            totalMs: Math.round(activityTotal.scanMs),
+            avgMs: activityTotal.scans ? Math.round(activityTotal.scanMs / activityTotal.scans * 100) / 100 : 0,
+            maxMs: Math.round(activityTotal.maxScanMs * 10) / 10
+        },
         refocusPending,
         banner: describe(banner),
         bannerChain: ancestorChain(banner, 5).map(describe),

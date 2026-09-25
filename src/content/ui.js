@@ -74,13 +74,70 @@ function restoreGameFocus() {
 let toast = null;
 let toastTimer = null;
 
+// Наш интерфейс на странице — плашка и карточка награды — живёт в закрытом
+// shadow DOM. Раньше это были узлы с классами ygab-*, а стили лежали в
+// blocker.css: и то и другое находилось одним querySelector. Теперь снаружи
+// виден только безымянный div, а внутрь скрипты страницы не заглянут.
+//
+// pointer-events: none на плашке обязателен — она висит поверх игры и не
+// должна перехватывать ни клики, ни фокус. У карточки награды фон тоже
+// пропускает клики: под ним пауза игры, перехватывать нечего.
+const UI_CSS = `
+.t {
+    position: fixed; left: 16px; bottom: 16px; z-index: 2147483647;
+    padding: 8px 14px; background: rgba(23, 23, 26, 0.92);
+    border: 1px solid #2e2e34; border-radius: 10px; color: #f2f2f4;
+    font: 400 13px/1.3 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-variant-numeric: tabular-nums; pointer-events: none; user-select: none;
+}
+.o {
+    position: fixed; inset: 0; z-index: 2147483647;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(12, 12, 14, 0.82);
+    font: 400 14px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    pointer-events: none;
+}
+.c {
+    min-width: 240px; padding: 24px 32px; background: #17171a;
+    border: 1px solid #2e2e34; border-radius: 16px; color: #f2f2f4;
+    text-align: center; pointer-events: auto;
+}
+.h { font-size: 15px; font-weight: 600; }
+.n {
+    margin: 12px 0 4px; font-size: 56px; font-weight: 700; line-height: 1;
+    color: #ffcc00; font-variant-numeric: tabular-nums;
+}
+.s { color: #9a9aa4; font-size: 12px; }
+.b {
+    margin-top: 16px; padding: 6px 12px; background: transparent; color: #9a9aa4;
+    border: 1px solid #2e2e34; border-radius: 8px; font-size: 12px;
+    font-family: inherit; cursor: pointer;
+}
+.b:hover { color: #f2f2f4; }
+`;
+
+// Хост с закрытым теневым деревом. Сам хост нулевого размера и не ловит
+// события; видимое — внутри, с position: fixed относительно окна.
+function createShadowHost() {
+    const host = document.createElement('div');
+    host.style.cssText = 'all: initial; position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 2147483647; pointer-events: none;';
+    const shadow = host.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent = UI_CSS;
+    shadow.append(style);
+    return { host, shadow };
+}
+
 function showToast(text) {
     if (!toast) {
-        toast = document.createElement('div');
-        toast.className = 'ygab-toast';
-        document.body.append(toast);
+        const { host, shadow } = createShadowHost();
+        const node = document.createElement('div');
+        node.className = 't';
+        shadow.append(node);
+        document.body.append(host);
+        toast = { host, node };
     }
-    toast.textContent = text;
+    toast.node.textContent = text;
     clearTimeout(toastTimer);
     toastTimer = null;
     return toast;
@@ -103,7 +160,7 @@ function removeToast() {
     clearTimeout(toastTimer);
     toastTimer = null;
     if (toast) {
-        toast.remove();
+        toast.host.remove();
         toast = null;
     }
 }
@@ -115,35 +172,38 @@ let overlay = null;
 function buildOverlay(onReveal) {
     // Собираем через createElement, а не innerHTML: на странице включены
     // Trusted Types, и строковая разметка может быть отклонена.
+    const { host, shadow } = createShadowHost();
+
     const root = document.createElement('div');
-    root.className = 'ygab-overlay';
+    root.className = 'o';
 
     const card = document.createElement('div');
-    card.className = 'ygab-overlay__card';
+    card.className = 'c';
 
     const title = document.createElement('div');
-    title.className = 'ygab-overlay__title';
+    title.className = 'h';
     title.textContent = 'Реклама за награду скрыта';
 
     const timer = document.createElement('div');
-    timer.className = 'ygab-overlay__timer';
+    timer.className = 'n';
     timer.textContent = '—';
 
     const hint = document.createElement('div');
-    hint.className = 'ygab-overlay__hint';
+    hint.className = 's';
     hint.textContent = 'Награда придёт автоматически';
 
     const reveal = document.createElement('button');
-    reveal.className = 'ygab-overlay__reveal';
+    reveal.className = 'b';
     reveal.type = 'button';
     reveal.textContent = 'Показать рекламу';
     reveal.addEventListener('click', onReveal);
 
     card.append(title, timer, hint, reveal);
     root.append(card);
-    document.body.append(root);
+    shadow.append(root);
+    document.body.append(host);
 
-    return { root, timer, hint };
+    return { root: host, timer, hint };
 }
 
 function removeOverlay() {

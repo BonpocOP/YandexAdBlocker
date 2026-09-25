@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "yandex",
+  "version": "2026.09.25.1",
+  "sites": [{ "hosts": ["yandex.ru", "ya.ru", "yandex.com", "yandex.kz", "yandex.by", "yandex.uz"] }],
+  "notes": "Черновик по R3 (признаки из RU AdList и moii-dev). НЕ проверен на образцах: Яндекс снимаем только через основной профиль, по одной странице (docs/research/vpn-session.md). Классы Яндекса ротируются — опора на ссылки, метки с гомоглифами и data-атрибуты.",
+  "protect": [
+    "form",
+    "[role=\"search\"]",
+    ".HeaderForm",
+    ".search3",
+    ".serp-header"
+  ],
+  "slots": [
+    {
+      "id": "search-direct-result",
+      "kind": "native",
+      "paths": ["/search/*"],
+      "find": {
+        "links": ["_crpd", "//yabs.yandex.", "//an.yandex.", "yandexadexchange."],
+        "text": { "any": ["реклама", "промо"], "in": ".organic__subtitle, .label, [class*=\"Label\"], [class*=\"label\"]", "maxLength": 20, "homoglyphs": true },
+        "selectors": { "list": [".Organic_withPromoOffer", "[class*=\"serp-adv\"]", ".direct-item"], "weight": 2 }
+      },
+      "score": { "threshold": 3 },
+      "root": { "strategy": "closest", "selector": "#search-result > li, #search-result > [class]", "maxLevels": 12 },
+      "action": "collapse",
+      "notes": "Порог 3: ссылка (2) + метка (1) или класс (2) + метка (1). Одной метки мало — органический результат со словом «реклама» в заголовке не должен пропасть."
+    },
+    {
+      "id": "search-right-direct",
+      "kind": "sidebar",
+      "paths": ["/search/*"],
+      "find": {
+        "selectors": [".DirectInlineContainer", "[class^=\"AdvRsya\"]", ".AdvRsya-Slot", ".AdvProductGallery"]
+      },
+      "root": { "strategy": "closest", "selector": "[data-log-node], .content__right > *", "maxLevels": 8 },
+      "action": "collapse"
+    },
+    {
+      "id": "distribution-popup",
+      "kind": "popup",
+      "find": {
+        "selectors": { "list": [".dist-overlay__popup", ".main__distr-popup", ".Distribution", "[class*=\"distr-popup\"]", ".b-yabrowser-promo", "[data-bem*=\"search-select-promo\"]"], "weight": 2 },
+        "links": ["browser.yandex.", "download.cdn.yandex.net", "yandex.ru/soft/"],
+        "text": { "any": ["яндекс браузер", "поиском по умолчанию", "основным поиском", "сделать стартовой", "установите"], "maxLength": 120, "homoglyphs": true }
+      },
+      "score": { "threshold": 2 },
+      "root": { "strategy": "overlay", "maxLevels": 8 },
+      "action": "neutralize",
+      "cleanup": { "body": { "scrollLock": true, "blur": true } },
+      "notes": "Всплывашки «установите Яндекс Браузер», «сделайте поиском по умолчанию». Список классов — из RU AdList и annoyances-списков uBO; ссылка и текст — чтобы ловить новые варианты."
+    }
+  ]
+}

@@ -14,6 +14,8 @@
         </label>
     </header>
 
+    <a class="update" id="update" href="#" target="_blank" rel="noopener" hidden></a>
+
     <p class="status" id="status">Загрузка…</p>
 
     <ul class="options" id="options">
@@ -34,16 +36,6 @@
             </label>
             <label class="switch switch_small">
                 <input type="checkbox" id="fullscreen" class="switch__input">
-                <span class="switch__track"></span>
-            </label>
-        </li>
-        <li class="option">
-            <label class="option__label" for="rewarded">
-                <span class="option__name">За награду</span>
-                <span class="option__hint">Бонус выдаётся без просмотра ролика</span>
-            </label>
-            <label class="switch switch_small">
-                <input type="checkbox" id="rewarded" class="switch__input">
                 <span class="switch__track"></span>
             </label>
         </li>
@@ -82,6 +74,14 @@
             <span class="stats__caption">всего</span>
         </div>
     </div>
+
+    <details class="env">
+        <summary class="env__title">Что ещё включено в браузере</summary>
+        <p class="env__hint">Попадёт в отчёт — так проще найти причину, если что-то сломалось.</p>
+        <label class="env__item"><input type="checkbox" data-env="blocker"> Другой блокировщик рекламы</label>
+        <label class="env__item"><input type="checkbox" data-env="vpn"> VPN или прокси</label>
+        <label class="env__item"><input type="checkbox" data-env="translator"> Переводчик страниц</label>
+    </details>
 
     <footer class="foot">
         <button type="button" class="btn" id="reload">Перезагрузить страницу</button>

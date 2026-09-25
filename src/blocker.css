@@ -5,8 +5,8 @@
  * Важно: здесь именно visibility, а не display. Блок остаётся в потоке, и
  * content.js может измерить его высоту — без этой цифры нечем чинить
  * геометрию контейнера, из-за которой после обычного адблока оставалось
- * пустое поле. Сразу после замера скрипт ставит на узел data-ygab-hidden,
- * и правило ниже убирает блок из потока уже окончательно.
+ * пустое поле. Сразу после замера скрипт ставит на узел инлайновый
+ * display: none и убирает блок из потока уже окончательно.
  *
  * Каждая группа правил выключается своим атрибутом на <html>, который ставит
  * content.js. Так тумблеры в попапе возвращают страницу в исходный вид без
@@ -130,99 +130,6 @@ html:not([data-ygab="off"]):not([data-ygab-rewarded="off"]) .play-modal.adv-focu
  */
 html:not([data-ygab="off"]):not([data-ygab-fullscreen="off"]) [class*="prowo-container"]:not([data-ygab-revealed]):has([class*="promo-slide"]),
 html:not([data-ygab="off"]):not([data-ygab-fullscreen="off"]) [class*="promo-container_advType"]:not([data-ygab-revealed]):has([class*="promo-slide"]) {
-    opacity: 0 !important;
-    pointer-events: none !important;
-}
-
-/*
- * Плашка-индикатор. Полноэкранная реклама пропускается за доли секунды, и без
- * неё это выглядит как мигание непонятно чего.
- *
- * pointer-events: none обязателен — плашка висит поверх игры и не должна
- * перехватывать ни клики, ни фокус: управление игре только что вернули.
- */
-.ygab-toast {
-    position: fixed;
-    left: 16px;
-    bottom: 16px;
-    z-index: 2147483647;
-    padding: 8px 14px;
-    background: rgba(23, 23, 26, 0.92);
-    border: 1px solid #2e2e34;
-    border-radius: 10px;
-    color: #f2f2f4;
-    font: 400 13px/1.3 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    font-variant-numeric: tabular-nums;
-    pointer-events: none;
-    user-select: none;
-}
-
-/*
- * Наш собственный экран вместо рекламы за награду: пока ролик крутится
- * невидимым, игрок видит отсчёт и понимает, что награда придёт.
- */
-.ygab-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 2147483647;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(12, 12, 14, 0.82);
-    font: 400 14px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    /* Клики уходят сквозь фон: под ним пауза игры, перехватывать нечего. */
-    pointer-events: none;
-}
-
-.ygab-overlay__card {
-    min-width: 240px;
-    padding: 24px 32px;
-    background: #17171a;
-    border: 1px solid #2e2e34;
-    border-radius: 16px;
-    color: #f2f2f4;
-    text-align: center;
-    pointer-events: auto;
-}
-
-.ygab-overlay__title {
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.ygab-overlay__timer {
-    margin: 12px 0 4px;
-    font-size: 56px;
-    font-weight: 700;
-    line-height: 1;
-    color: #ffcc00;
-    font-variant-numeric: tabular-nums;
-}
-
-.ygab-overlay__hint {
-    color: #9a9aa4;
-    font-size: 12px;
-}
-
-.ygab-overlay__reveal {
-    margin-top: 16px;
-    padding: 6px 12px;
-    background: transparent;
-    color: #9a9aa4;
-    border: 1px solid #2e2e34;
-    border-radius: 8px;
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-}
-
-.ygab-overlay__reveal:hover {
-    color: #f2f2f4;
-}
-
-html:not([data-ygab="off"]) [data-ygab-hidden="1"] {
-    display: none !important;
-    visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
 }

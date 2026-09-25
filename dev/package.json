@@ -1,0 +1,13 @@
+{
+  "name": "ygab-dev",
+  "private": true,
+  "description": "Инструменты разработки: съёмка образцов страниц, тесты, замеры. Не входит в расширение.",
+  "type": "module",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs --check && node test-game-hook.mjs && node test-update.mjs"
+  }
+}
