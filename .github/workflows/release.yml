@@ -1,0 +1,44 @@
+# Выпуск релиза по тегу вида v1.5.2.
+#
+# Собирает архив тем же tools/pack.py, что и локально, и прикладывает его к
+# релизу под постоянным именем yandex-games-adblocker.zip — на это имя ведёт
+# кнопка «Скачать» в README (releases/latest/download/...). Рядом кладётся
+# копия с версией в имени, для истории.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версия в теге совпадает с манифестом
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Тег $GITHUB_REF_NAME, а в manifest.json версия $VERSION"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Упаковка
+        run: |
+          python3 tools/pack.py out/yandex-games-adblocker.zip
+          cp out/yandex-games-adblocker.zip "out/yandex-games-adblocker-v$VERSION.zip"
+
+      - name: Релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            out/yandex-games-adblocker.zip \
+            "out/yandex-games-adblocker-v$VERSION.zip" \
+            --title "Версия $VERSION" \
+            --generate-notes

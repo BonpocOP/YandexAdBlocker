@@ -102,7 +102,7 @@ function isAdShell(modal) {
     return isRewardedModal(modal) || Boolean(modal.querySelector(AD_SHELL_MARKER_SELECTOR));
 }
 
-function isStuckModal(modal, contentSelector = AD_CONTENT_SELECTOR) {
+function isStuckModal(modal, contentSelector = AD_CONTENT_SELECTOR, threshold = STUCK_MODAL_MS) {
     if (!isModalOnScreen(modal) || hasRenderedContent(modal, contentSelector)) {
         stuckSince.delete(modal);
         return false;
@@ -114,7 +114,7 @@ function isStuckModal(modal, contentSelector = AD_CONTENT_SELECTOR) {
         note('stuck-wait', modalLabel(modal));
         return false;
     }
-    return Date.now() - since >= STUCK_MODAL_MS;
+    return Date.now() - since >= threshold;
 }
 
 // Звук рекламы в скрытом модале продолжает играть. Для медиа в самом
@@ -326,7 +326,15 @@ function tickPlainAd(modal, state, elapsed) {
         state.clicks = (state.clicks || 0) + 1;
     }
 
-    if (state.attempts >= DISMISS_ATTEMPTS) {
+    // Зависшая оболочка пуста изначально: крестик если и есть, то уже
+    // отрисован, и ждать, пока он появится, нечего. Нет его — убираем сразу,
+    // есть — даём платформе секунду отреагировать на клик.
+    if (state.stuck && !button) {
+        forceHideModal(modal, state);
+        return;
+    }
+    const limit = state.stuck ? STUCK_DISMISS_ATTEMPTS : DISMISS_ATTEMPTS;
+    if (state.attempts >= limit) {
         forceHideModal(modal, state);
     }
 }

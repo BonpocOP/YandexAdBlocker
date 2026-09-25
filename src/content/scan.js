@@ -121,7 +121,7 @@ function scanPromoInterstitial() {
         }
 
         const shown = isModalShown(outer, PROMO_CONTENT_SELECTOR);
-        if (!shown && !isStuckModal(outer, PROMO_CONTENT_SELECTOR)) {
+        if (!shown && !isStuckModal(outer, PROMO_CONTENT_SELECTOR, STUCK_PROMO_MS)) {
             return;
         }
 
