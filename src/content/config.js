@@ -102,6 +102,18 @@ const CLOSE_BUTTON_SELECTOR = [
 // раздачу попадут обычные диалоги платформы — пауза, вход в аккаунт.
 const ADV_MARKER_SELECTOR = '[id*="_R-A-"], [class*="adv"], [data-testid*="adv"], ' + CLOSE_BUTTON_SELECTOR;
 
+// Строгие признаки рекламной оболочки — для модала, внутри которого пусто.
+// Общий ADV_MARKER_SELECTOR тут не годится: adv-focusable — это focus-trap
+// платформы, он стоит на любом её окне, и [class*="adv"] находит его у
+// потомков меню игры. Пустое меню без фрейма выглядело «зависшей рекламой»
+// и через пару секунд закрывалось само. Отличает оболочку рекламы её
+// собственный крестик или блок РСЯ; «Закрыть» по aria-label есть у всех.
+const AD_SHELL_MARKER_SELECTOR = [
+    '[data-testid*="fullscreen-render-button"]',
+    '[class*="close-button_type_adv"]',
+    '[id*="_R-A-"]'
+].join(', ');
+
 const DISMISS_INTERVAL_MS = 250;
 const DISMISS_ATTEMPTS = 32;
 

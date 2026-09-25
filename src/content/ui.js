@@ -12,11 +12,26 @@
 // игре сама, когда закрывает рекламу своим путём; мы этот путь обходим,
 // поэтому после закрытия фрейм остаётся без фокуса — игра видна, но не
 // реагирует на клавиатуру.
+//
+// Во вкладке в фоне фокус не переносится. Реклама, всплывшая, пока игрок
+// был на другой вкладке, закрывалась там же, фокус с её кнопки снимался, а во
+// фрейм не попадал — при возврате клавиши уходили в body. На экране при этом
+// пусто: плашка успевала погаснуть ещё в фоне. Поэтому возврат откладываем
+// до появления вкладки.
+let refocusPending = false;
+
 function refocusGame() {
     const frame = document.querySelector('iframe#game-frame') || largestFrame();
     if (!frame) {
         return;
     }
+    if (document.hidden) {
+        refocusPending = true;
+        note('refocus-deferred', focusLabel());
+        return;
+    }
+    refocusPending = false;
+    const before = focusLabel();
     try {
         // Сначала снимаем фокус с того, что его перехватило: иначе
         // focus-trap модала вернёт его себе.
@@ -32,6 +47,21 @@ function refocusGame() {
         }
     } catch (e) {
         /* фокус не критичен — молча пропускаем */
+    }
+    note('refocus', { before, after: focusLabel() });
+}
+
+// Игрок вернулся во вкладку. Фокус отдаём игре, если он ей и причитается:
+// висит отложенный возврат или фокус никому не принадлежит (body). Если он
+// стоит на чём-то своём — меню, поле ввода, сам фрейм, — не трогаем.
+function restoreGameFocus() {
+    if (document.hidden || !isTopGamePage() || !isGameAppPage()) {
+        return;
+    }
+    const active = document.activeElement;
+    const idle = !active || active === document.body || active === document.documentElement;
+    if (refocusPending || idle) {
+        refocusGame();
     }
 }
 

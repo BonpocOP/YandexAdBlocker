@@ -21,6 +21,37 @@ let suppressCount = false;
 // возвращал страницу в исходное состояние без перезагрузки.
 const touched = [];
 
+// Журнал последних событий для отчёта. Отчёт снимают уже после того, как всё
+// случилось, и по снимку разметки не видно, что было минутой раньше: была ли
+// реклама, чем кончилось её закрытие, куда ушёл фокус при смене вкладки.
+const JOURNAL_LIMIT = 60;
+const journal = [];
+const journalStart = Date.now();
+
+function note(kind, detail) {
+    journal.push({
+        // Секунды от загрузки страницы, с десятыми.
+        t: Math.round((Date.now() - journalStart) / 100) / 10,
+        kind,
+        detail: detail === undefined ? null : detail
+    });
+    if (journal.length > JOURNAL_LIMIT) {
+        journal.shift();
+    }
+}
+
+// Куда сейчас идут нажатия клавиш — коротко, для журнала.
+function focusLabel() {
+    const el = document.activeElement;
+    if (!el) {
+        return null;
+    }
+    const cls = typeof el.className === 'string' && el.className
+        ? '.' + el.className.trim().split(/\s+/)[0]
+        : '';
+    return el.tagName + (el.id ? '#' + el.id : '') + cls;
+}
+
 // Диагностические сообщения от sdk-hook.js, в том числе из фрейма игры.
 // Слушателя ставим синхронно, до чтения настроек: хук рапортует о загрузке
 // сразу на document_start.

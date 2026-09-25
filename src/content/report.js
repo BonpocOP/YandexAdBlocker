@@ -55,9 +55,16 @@ function describeModal(el) {
         rect: el.getBoundingClientRect().toJSON(),
         kind: promo ? 'promo' : (isRewardedModal(el) ? 'rewarded' : 'fullscreen'),
         isAdvModal: promo ? true : isAdvModal(el),
+        // false у пустого модала — значит, это окно платформы (меню, пауза),
+        // и закрывать его как зависшую рекламу нельзя.
+        isAdShell: promo ? true : isAdShell(el),
         // Ключевой флаг: false при живой рекламе на экране — значит,
         // промахнулся contentSelector.
         isModalShown: isModalShown(el, contentSelector),
+        onScreen: isModalOnScreen(el),
+        // Сколько модал уже стоит на экране пустым: больше STUCK_MODAL_MS
+        // без закрытия — значит, зависший путь почему-то не сработал.
+        stuckMs: stuckSince.has(el) ? Date.now() - stuckSince.get(el) : null,
         contentFound: content ? {
             tag: content.tagName,
             class: content.getAttribute('class'),
@@ -79,6 +86,32 @@ function describeModal(el) {
     };
 }
 
+// Что лежит в центре экрана, сверху вниз. Отвечает на вопросы, которые не
+// видны по списку модалов: чей крестик висит посередине и что перехватывает
+// клики поверх игры, когда глазу ничего не видно.
+function collectAtCenter() {
+    const x = Math.round(window.innerWidth / 2);
+    const y = Math.round(window.innerHeight / 2);
+    let stack;
+    try {
+        stack = document.elementsFromPoint(x, y);
+    } catch (e) {
+        return [];
+    }
+    return stack.slice(0, 8).map(el => {
+        const style = getComputedStyle(el);
+        return {
+            tag: el.tagName,
+            class: el.getAttribute('class'),
+            id: el.id || null,
+            testid: el.getAttribute('data-testid'),
+            opacity: style.opacity,
+            pointerEvents: style.pointerEvents,
+            zIndex: style.zIndex
+        };
+    });
+}
+
 function collectModals() {
     const selector = [FULLSCREEN_MODAL_SELECTOR, PROMO_INTERSTITIAL_SELECTOR].join(', ');
     return Array.from(document.querySelectorAll(selector)).slice(0, 12).map(describeModal);
@@ -96,6 +129,12 @@ function buildReport() {
         // Пусто — значит sdk-hook.js не попал во фрейм игры и реклама
         // через SDK идёт мимо заглушки.
         sdkEvents,
+        // История: смена вкладки, закрытие рекламы, возврат фокуса. Время —
+        // секунды от загрузки страницы; uptime — когда снят сам отчёт.
+        uptime: Math.round((Date.now() - journalStart) / 100) / 10,
+        journal,
+        tabHidden: document.hidden,
+        refocusPending,
         banner: describe(banner),
         bannerChain: ancestorChain(banner, 5).map(describe),
         gameFrame: describe(frame),
@@ -106,6 +145,7 @@ function buildReport() {
             : [],
         suspects: collectSuspects(),
         modals: collectModals(),
+        atCenter: collectAtCenter(),
         // Покрыт ли origin фрейма игры в manifest. Пустой sdkEvents при
         // sdkHookInFrame: false означает, что include_globs промахнулись
         // и реклама через SDK идёт мимо заглушки.

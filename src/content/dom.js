@@ -38,13 +38,27 @@ function force(el, prop, value) {
     el.style.setProperty(prop, value, 'important');
 }
 
+function restoreEntry({ el, prop, prev, priority }) {
+    if (prev) {
+        el.style.setProperty(prop, prev, priority);
+    } else {
+        el.style.removeProperty(prop);
+    }
+}
+
 function restoreStyles() {
     while (touched.length) {
-        const { el, prop, prev, priority } = touched.pop();
-        if (prev) {
-            el.style.setProperty(prop, prev, priority);
-        } else {
-            el.style.removeProperty(prop);
+        restoreEntry(touched.pop());
+    }
+}
+
+// Вернуть исходные стили одного узла, не трогая остальные правки. Идём с
+// конца: при нескольких правках одного свойства последней восстановится
+// самая ранняя, то есть исходная.
+function restoreStylesOf(el) {
+    for (let i = touched.length - 1; i >= 0; i -= 1) {
+        if (touched[i].el === el) {
+            restoreEntry(touched.splice(i, 1)[0]);
         }
     }
 }

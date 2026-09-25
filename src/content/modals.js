@@ -14,10 +14,14 @@ const dismissing = new WeakMap();
 // Отдельный список таймеров: WeakMap не обойти, а гасить их при выключении
 // расширения нужно.
 let dismissTimers = [];
+// Наблюдатели за модалами, убранными силой, — см. holdUntilReused.
+let reuseWatchers = [];
 
 function stopDismissing() {
     dismissTimers.forEach(clearInterval);
     dismissTimers = [];
+    reuseWatchers.forEach(watcher => watcher.disconnect());
+    reuseWatchers = [];
     removeOverlay();
     removeToast();
 }
@@ -91,6 +95,13 @@ function isModalShown(modal, contentSelector = AD_CONTENT_SELECTOR) {
 // значит, не дождёмся.
 const stuckSince = new WeakMap();
 
+// Пустой модал ещё не значит рекламу: меню игры, пауза, вход в аккаунт —
+// тоже модалы платформы с тем же adv-focusable и без фрейма внутри.
+// Оболочкой рекламы считаем только тот, где есть её собственный след.
+function isAdShell(modal) {
+    return isRewardedModal(modal) || Boolean(modal.querySelector(AD_SHELL_MARKER_SELECTOR));
+}
+
 function isStuckModal(modal, contentSelector = AD_CONTENT_SELECTOR) {
     if (!isModalOnScreen(modal) || hasRenderedContent(modal, contentSelector)) {
         stuckSince.delete(modal);
@@ -100,6 +111,7 @@ function isStuckModal(modal, contentSelector = AD_CONTENT_SELECTOR) {
     const since = stuckSince.get(modal);
     if (!since) {
         stuckSince.set(modal, Date.now());
+        note('stuck-wait', modalLabel(modal));
         return false;
     }
     return Date.now() - since >= STUCK_MODAL_MS;
@@ -137,6 +149,14 @@ function findCloseButton(modal, selector = CLOSE_BUTTON_SELECTOR) {
 // «Закрыть» отменяет бонус, ради которого игрок её и запустил.
 function isRewardedModal(modal) {
     return /rewarded/i.test(modal.getAttribute('class') || '');
+}
+
+// Модал для журнала: первый класс и отличительные модификаторы. Полный класс
+// с хешами тут только мешает читать.
+function modalLabel(modal) {
+    const classes = (modal.getAttribute('class') || '').split(/\s+/).filter(Boolean);
+    const kinds = classes.filter(name => /fullscreen|rewarded|prowo|promo/i.test(name)).slice(0, 2);
+    return [classes[0]].concat(kinds).filter(Boolean).join(' ');
 }
 
 // Пытаемся прочитать таймер самой рекламы. Получится, только если отсчёт
@@ -185,6 +205,7 @@ function beginDismiss(modal, options) {
         stuck: Boolean(options.stuck)
     };
     dismissing.set(modal, state);
+    note('dismiss-start', { label: state.label, modal: modalLabel(modal), stuck: state.stuck, hidden: document.hidden });
 
     // Гасим визуально, но оставляем в потоке и в отрисовке: рекламный плеер
     // должен считать себя показанным, иначе кнопка закрытия не станет активной
@@ -209,10 +230,26 @@ function beginDismiss(modal, options) {
 
 // Узел переиспользуется между показами, поэтому состояние обязательно
 // снимаем: иначе следующая реклама в том же модале будет пропущена.
+//
+// Стили снимаем тоже. В том же узле платформа потом открывает свои окна —
+// меню игры в том числе, — и оставленные opacity: 0 и pointer-events: none
+// делали их невидимыми и прозрачными для кликов: кнопка меню «не работала».
 function finishDismiss(modal, state) {
     clearInterval(state.timer);
     dismissing.delete(modal);
     removeOverlay();
+    note('dismiss-end', {
+        label: state.label,
+        forced: Boolean(state.forced),
+        clicks: state.clicks || 0,
+        ms: Date.now() - state.startedAt,
+        hidden: document.hidden
+    });
+    if (state.forced) {
+        holdUntilReused(modal);
+    } else {
+        restoreStylesOf(modal);
+    }
     fadeToast(state.forced
         ? state.label + ': убрана принудительно'
         : state.label + ' пропущена');
@@ -224,14 +261,35 @@ function finishDismiss(modal, state) {
 // Крестик не нашёлся за отведённые попытки. Игра может остаться на паузе, но
 // экран будет свободен — это лучше, чем висеть под невидимым модалом.
 function forceHideModal(modal, state) {
-    modal.style.setProperty('display', 'none', 'important');
+    force(modal, 'display', 'none');
     state.forced = true;
     finishDismiss(modal, state);
+}
+
+// Модал, убранный силой, держим скрытым, пока платформа его не тронет. Снять
+// display: none сразу нельзя — оболочка вернётся на экран и снова встанет
+// поверх игры. Оставить навсегда тоже нельзя: следующее окно в этом узле
+// так и не покажется. Смена класса или содержимого — знак, что платформа
+// пустила узел под новый показ: возвращаем стили и даём проходу решить
+// заново, реклама там или нет.
+//
+// Смотрим только class и дерево, не style: display ставим мы сами.
+function holdUntilReused(modal) {
+    const watcher = new MutationObserver(() => {
+        watcher.disconnect();
+        reuseWatchers = reuseWatchers.filter(item => item !== watcher);
+        note('hold-release', modalLabel(modal));
+        restoreStylesOf(modal);
+        scheduleScan();
+    });
+    watcher.observe(modal, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
+    reuseWatchers.push(watcher);
 }
 
 // Аварийный выход из рекламы за награду: если отсчёт врёт или награда не
 // приходит, игрок возвращает рекламу и досматривает её сам.
 function revealAd(modal, state) {
+    note('reveal', state.label);
     modal.style.setProperty('opacity', '1', 'important');
     modal.style.setProperty('pointer-events', 'auto', 'important');
     modal.setAttribute(REVEALED_ATTR, '1');
@@ -245,8 +303,9 @@ function revealAd(modal, state) {
         if (!modal.isConnected || !isModalShown(modal)) {
             clearInterval(watcher);
             modal.removeAttribute(REVEALED_ATTR);
-            modal.style.removeProperty('opacity');
-            modal.style.removeProperty('pointer-events');
+            // Возвращаем стили, какими они были до beginDismiss, и заодно
+            // вычищаем его правки из журнала.
+            restoreStylesOf(modal);
         }
     }, DISMISS_INTERVAL_MS);
     dismissTimers.push(watcher);
@@ -264,6 +323,7 @@ function tickPlainAd(modal, state, elapsed) {
     const button = findCloseButton(modal, state.closeSelector);
     if (button) {
         button.click();
+        state.clicks = (state.clicks || 0) + 1;
     }
 
     if (state.attempts >= DISMISS_ATTEMPTS) {
@@ -295,6 +355,7 @@ function tickRewardedAd(modal, state, elapsed) {
     const button = findCloseButton(modal);
     if (button) {
         button.click();
+        state.clicks = (state.clicks || 0) + 1;
     }
 
     if (elapsed >= REWARDED_MAX_WAIT_MS) {

@@ -94,8 +94,9 @@ function scanFullscreen() {
         }
 
         // Реклама не догрузилась, но оболочка заняла экран и держит игру на
-        // паузе. Закрываем как обычную — ждать тут нечего.
-        if (isStuckModal(modal)) {
+        // паузе. Закрываем как обычную — ждать тут нечего. Только если это
+        // действительно оболочка рекламы: пустым модалом выглядит и меню игры.
+        if (isAdShell(modal) && isStuckModal(modal)) {
             dismissModal(modal, { label: 'Зависшая реклама', stuck: true });
         }
     });
@@ -186,9 +187,25 @@ function scheduleScan() {
 // состояться, а новых мутаций к возвращению игрока уже не будет — реклама
 // всплыла, пока его не было. Получалось худшее из двух: оболочку погасил наш
 // CSS, а закрыть её некому, и игра стоит на паузе за блюром.
+//
+// Заодно возвращаем игре фокус, если он потерялся, пока вкладка была в фоне.
+// С задержкой: сначала браузер восстанавливает фокус сам, и решать, отдавать
+// ли его игре, надо уже по итогу.
 function onTabVisible() {
+    note(document.hidden ? 'tab-hidden' : 'tab-visible', focusLabel());
     if (!document.hidden) {
         scheduleScan();
+        setTimeout(restoreGameFocus, 200);
+    }
+}
+
+// Фокус окна без смены вкладки — например, возврат из другого окна. Здесь
+// фокус трогаем, только если возврат был отложен: иначе клик по шапке
+// страницы уводил бы его обратно в игру.
+function onWindowFocus() {
+    scheduleScan();
+    if (refocusPending) {
+        restoreGameFocus();
     }
 }
 
@@ -217,7 +234,7 @@ function startObserver() {
     window.addEventListener('popstate', scheduleScan);
     window.addEventListener('pageshow', scheduleScan);
     document.addEventListener('visibilitychange', onTabVisible);
-    window.addEventListener('focus', scheduleScan);
+    window.addEventListener('focus', onWindowFocus);
     startHeartbeat();
 }
 
@@ -229,7 +246,7 @@ function stopObserver() {
     window.removeEventListener('popstate', scheduleScan);
     window.removeEventListener('pageshow', scheduleScan);
     document.removeEventListener('visibilitychange', onTabVisible);
-    window.removeEventListener('focus', scheduleScan);
+    window.removeEventListener('focus', onWindowFocus);
     if (observer) {
         observer.disconnect();
         observer = null;
