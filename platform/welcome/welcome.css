@@ -1,0 +1,110 @@
+:root {
+    --bg: #f6f6f8;
+    --surface: #ffffff;
+    --text: #17171a;
+    --muted: #5d5d66;
+    --accent: #b38600;
+    --line: #e2e2e8;
+    color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #17171a;
+        --surface: #202024;
+        --text: #f2f2f4;
+        --muted: #9a9aa4;
+        --accent: #ffcc00;
+        --line: #2e2e34;
+        color-scheme: dark;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 40px 16px 56px;
+}
+
+.hero {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.hero__icon {
+    flex: none;
+}
+
+.hero__title {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.25;
+}
+
+.hero__lead {
+    margin: 4px 0 0;
+    color: var(--muted);
+}
+
+.card {
+    margin: 0 0 12px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+}
+
+.card h2 {
+    margin: 0 0 6px;
+    font-size: 16px;
+}
+
+.card p,
+.card ul {
+    margin: 0 0 6px;
+}
+
+.card p:last-child,
+.card ul:last-child {
+    margin-bottom: 0;
+}
+
+.card ul {
+    padding-left: 20px;
+}
+
+.card_quiet {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+a {
+    color: var(--accent);
+}
+
+.key {
+    font-style: normal;
+}
+
+.setup {
+    margin: 20px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.setup[data-state="error"] {
+    color: #c0392b;
+}

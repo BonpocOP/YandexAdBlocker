@@ -1,0 +1,5 @@
+{
+  "//": "Открытый ключ для поля key манифеста Cleathernet: номер расширения не зависит от папки, настройки не теряются при переносе. Закрытый ключ не нужен — .crx мы не подписываем. Номер вычисляется из ключа.",
+  "id": "kdagdgppndhdmhoappjelljmkdnpgmod",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArzfT3vkjnfjBiQN2s6hKAuSd4tJp+U4/OpB5rpWnzoz2HiMcH9/Kv8FPYMgnkSHq5GdFVNkkKunkuiTkYTVhCkKRhLDB+xbquwex2Mp2SlFtHtSqYNQYXeSsXisf8RlisjHqnxDZqS6V8FZC0H6BNuoMTCldLnIxOqw6oRaFWyT89v8h8uE5RRxMWaQYhWyW2rrrFJH9r0ISvxSa+WjBatWlw0WrzMxuNJKU5ulL6U+RcABkpZa2f/cwmrSceZHYvLUjbxAMlcDY8a3gf/XJREdYQdhIGNwLj8KwVBb/VgQ5G+8WPUSllHZT2Ci0cpsFDbHW4e0Fmv4wsW0rfXb10QIDAQAB"
+}

@@ -188,8 +188,12 @@ function buildReport() {
     const frame = largestFrame();
 
     let version = null;
+    let product = null;
     try {
-        version = chrome.runtime.getManifest().version;
+        const manifest = chrome.runtime.getManifest();
+        version = manifest.version;
+        // Расширение для игр или сборка Cleathernet: версии у них пока общие.
+        product = manifest.name;
     } catch (e) {
         /* контекст расширения оборван — версия не критична */
     }
@@ -198,9 +202,12 @@ function buildReport() {
         // Без версии не отличить «баг не исправлен» от «расширение не
         // перезагружено после обновления».
         version,
+        product,
         url: location.href,
         blockedOnPage: pageBlocked,
         settings,
+        // Выключено кнопкой «на этом сайте» (сборка Cleathernet).
+        siteOff: siteIsOff(),
         viewport: { width: window.innerWidth, height: window.innerHeight },
         // Пусто — значит sdk-hook.js не попал во фрейм игры и реклама
         // через SDK идёт мимо заглушки.

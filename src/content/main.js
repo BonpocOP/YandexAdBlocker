@@ -30,7 +30,16 @@ if (chrome.runtime && chrome.runtime.onMessage) {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || orphaned) {
+    if (orphaned) {
+        return;
+    }
+    if (area === 'local' && OFF_SITES_KEY in changes) {
+        const next = changes[OFF_SITES_KEY].newValue;
+        offSites = Array.isArray(next) ? next : [];
+        applyState();
+        return;
+    }
+    if (area !== 'sync') {
         return;
     }
     let dirty = false;
@@ -51,12 +60,15 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 callExtension(() => {
-    chrome.storage.sync.get({ ...DEFAULTS, [NO_STRETCH_KEY]: [] }, stored => {
-        settings = { ...DEFAULTS, ...stored };
-        noStretchGames = Array.isArray(stored[NO_STRETCH_KEY]) ? stored[NO_STRETCH_KEY] : [];
-        applyState();
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', scan, { once: true });
-        }
+    chrome.storage.local.get({ [OFF_SITES_KEY]: [] }, local => {
+        offSites = Array.isArray(local[OFF_SITES_KEY]) ? local[OFF_SITES_KEY] : [];
+        chrome.storage.sync.get({ ...DEFAULTS, [NO_STRETCH_KEY]: [] }, stored => {
+            settings = { ...DEFAULTS, ...stored };
+            noStretchGames = Array.isArray(stored[NO_STRETCH_KEY]) ? stored[NO_STRETCH_KEY] : [];
+            applyState();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', scan, { once: true });
+            }
+        });
     });
 });

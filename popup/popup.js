@@ -75,7 +75,8 @@
     // только показываем ссылку.
     function reflectUpdate() {
         const el = document.getElementById('update');
-        chrome.storage.local.get({ update: null }, ({ update }) => {
+        chrome.storage.local.get({ 'ygab.update': null }, stored => {
+            const update = stored['ygab.update'];
             if (!update || !update.version) {
                 el.hidden = true;
                 return;

@@ -13,6 +13,9 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     if (!request || request.what !== 'ygab:frame-diag' || !sender.tab) {
         return;
     }
+    if (typeof request.event !== 'string' || request.event.length > 16000) {
+        return;
+    }
     chrome.tabs.sendMessage(sender.tab.id, { what: 'ygab:frame-diag', event: request.event }, { frameId: 0 })
         .catch(() => { /* верхний документ ещё не готов или ушёл — не критично */ });
 });
@@ -42,13 +45,21 @@ async function applyRelease(release) {
     const latest = String((release && release.tag_name) || '').replace(/^v/, '');
     const current = chrome.runtime.getManifest().version;
     const newer = latest !== '' && isNewer(latest, current);
+    // Префикс ygab. — хранилище общее с uBO Lite, у него ключи без префикса.
     await chrome.storage.local.set({
-        update: newer ? { version: latest, url: release.html_url || '' } : null,
-        updateCheckedAt: Date.now()
+        'ygab.update': newer ? { version: latest, url: release.html_url || '' } : null,
+        'ygab.updateCheckedAt': Date.now()
     });
-    await chrome.action.setBadgeText({ text: newer ? '↑' : '' });
+    // В сборке Cleathernet значок занят числом заблокированного от движка
+    // uBO Lite (у неё есть declarative_net_request) — о версии там говорит
+    // только строка в попапе.
+    if (!chrome.runtime.getManifest().declarative_net_request) {
+        await chrome.action.setBadgeText({ text: newer ? '↑' : '' });
+        if (newer) {
+            await chrome.action.setBadgeBackgroundColor({ color: '#2ea44f' });
+        }
+    }
     if (newer) {
-        await chrome.action.setBadgeBackgroundColor({ color: '#2ea44f' });
         await chrome.action.setTitle({ title: 'Доступна версия ' + latest });
     }
     return newer;

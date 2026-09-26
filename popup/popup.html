@@ -75,18 +75,20 @@
         </div>
     </div>
 
+    <footer class="foot">
+        <button type="button" class="btn" id="reload">Перезагрузить страницу</button>
+    </footer>
+
+    <!-- Всё про отчёт — в одном свёрнутом разделе: пока он закрыт, попап
+         только сообщает и не мешает. -->
     <details class="env">
-        <summary class="env__title">Что ещё включено в браузере</summary>
-        <p class="env__hint">Попадёт в отчёт — так проще найти причину, если что-то сломалось.</p>
+        <summary class="env__title">Сообщить о проблеме</summary>
+        <p class="env__hint">Что ещё включено в браузере? Попадёт в отчёт — так проще найти причину.</p>
         <label class="env__item"><input type="checkbox" data-env="blocker"> Другой блокировщик рекламы</label>
         <label class="env__item"><input type="checkbox" data-env="vpn"> VPN или прокси</label>
         <label class="env__item"><input type="checkbox" data-env="translator"> Переводчик страниц</label>
+        <button type="button" class="btn btn_ghost btn_wide" id="report">Скопировать отчёт</button>
     </details>
-
-    <footer class="foot">
-        <button type="button" class="btn" id="reload">Перезагрузить страницу</button>
-        <button type="button" class="btn btn_ghost" id="report">Скопировать отчёт</button>
-    </footer>
 
     <script src="popup.js"></script>
 </body>

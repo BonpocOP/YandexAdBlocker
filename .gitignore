@@ -9,6 +9,7 @@ build/
 # скриншоты для разбора вёрстки — не часть расширения
 *.png
 !icons/*.png
+!platform/icons/*.png
 
 # отчёты и дампы ошибок для разбора — не часть расширения
 bug.txt
@@ -25,3 +26,9 @@ test/fixtures/raw/
 
 # внутренние заметки и исследования — только локально
 docs/
+
+# кэш скачанных сборок (uBO Lite по vendor/ubol.json)
+dev/.cache/
+
+# архив Cleathernet для ручной проверки — ~10 МБ, в git не храним
+dist/cleathernet-*.zip

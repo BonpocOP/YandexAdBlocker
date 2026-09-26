@@ -142,7 +142,7 @@ function scanCatalog() {
 }
 
 function scan() {
-    if (orphaned || !settings.enabled || !document.body) {
+    if (orphaned || !isActive() || !document.body) {
         return;
     }
     // Проверяем мост на каждом проходе: сканирование запускает
@@ -306,7 +306,7 @@ function stopObserver() {
 function publishSdkSettings() {
     document.dispatchEvent(new CustomEvent(EV_CFG, {
         detail: JSON.stringify({
-            enabled: settings.enabled,
+            enabled: isActive(),
             fullscreen: settings.fullscreen,
             rewarded: settings.rewarded
         })
@@ -323,7 +323,7 @@ document.addEventListener(EV_ASK, () => {
 function publishCssFlags() {
     const root = document.documentElement;
     const flag = (attr, on) => on ? root.removeAttribute(attr) : root.setAttribute(attr, 'off');
-    flag('data-ygab', settings.enabled);
+    flag('data-ygab', isActive());
     flag('data-ygab-sticky', settings.sticky);
     flag('data-ygab-catalog', settings.catalog);
     flag('data-ygab-fullscreen', settings.fullscreen);
@@ -347,7 +347,7 @@ function applyState() {
     restoreStyles();
     unhideAll();
 
-    if (!settings.enabled) {
+    if (!isActive()) {
         pageBlocked = 0;
         kickResize();
         return;

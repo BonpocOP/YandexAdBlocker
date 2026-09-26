@@ -16,21 +16,58 @@
     const EV_DIAG = 'kt3wmz';
 
     const KEYS = { enabled: true, fullscreen: true, rewarded: true };
+    // Сайты, где расширение выключено кнопкой в попапе (сборка Cleathernet);
+    // тот же ключ, что OFF_SITES_KEY в content/config.js.
+    const OFF_SITES_KEY = 'ygab.offSites';
     let config = null;
+    let offSites = [];
+
+    // Решает хост вкладки, а не фрейма игры: выключили на yandex.ru —
+    // хук во фрейме пропускает рекламу к настоящему SDK.
+    function topHostname() {
+        try {
+            const origins = location.ancestorOrigins;
+            if (origins && origins.length) {
+                return new URL(origins[origins.length - 1]).hostname;
+            }
+        } catch (e) {
+            /* нет доступа — остаётся хост фрейма */
+        }
+        return location.hostname;
+    }
+
+    function siteIsOff() {
+        const host = topHostname();
+        return offSites.some(site => host === site || host.endsWith('.' + site));
+    }
 
     function publish() {
         if (config) {
-            document.dispatchEvent(new CustomEvent(EV_CFG, { detail: JSON.stringify(config) }));
+            const effective = { ...config, enabled: config.enabled !== false && !siteIsOff() };
+            document.dispatchEvent(new CustomEvent(EV_CFG, { detail: JSON.stringify(effective) }));
         }
     }
 
     try {
-        chrome.storage.sync.get(KEYS, stored => {
-            config = { ...KEYS, ...stored };
-            publish();
+        // Список выключенных сайтов — в local (см. content/config.js).
+        chrome.storage.local.get({ [OFF_SITES_KEY]: [] }, local => {
+            offSites = Array.isArray(local[OFF_SITES_KEY]) ? local[OFF_SITES_KEY] : [];
+            chrome.storage.sync.get(KEYS, stored => {
+                config = { ...KEYS, ...stored };
+                publish();
+            });
         });
         chrome.storage.onChanged.addListener((changes, area) => {
-            if (area !== 'sync' || !config) {
+            if (!config) {
+                return;
+            }
+            if (area === 'local' && OFF_SITES_KEY in changes) {
+                const next = changes[OFF_SITES_KEY].newValue;
+                offSites = Array.isArray(next) ? next : [];
+                publish();
+                return;
+            }
+            if (area !== 'sync') {
                 return;
             }
             let dirty = false;
@@ -50,9 +87,35 @@
 
     document.addEventListener(EV_ASK, publish);
 
+    // Пароль хука (см. sdk-hook.js): запоминаем из первого события — оно
+    // приходит до запуска скриптов страницы — и дальше пересылаем только
+    // события с ним. Остальную проверку делает верхний документ.
+    let hookToken = null;
     document.addEventListener(EV_DIAG, event => {
+        const raw = event.detail;
+        if (typeof raw !== 'string' || raw.length > 16000) {
+            return;
+        }
+        let data;
         try {
-            const sent = chrome.runtime.sendMessage({ what: 'ygab:frame-diag', event: event.detail });
+            data = JSON.parse(raw);
+        } catch (e) {
+            return;
+        }
+        if (!data || typeof data.k !== 'string') {
+            return;
+        }
+        if (hookToken === null) {
+            if (data.kind !== 'sdk-hook-loaded') {
+                return;
+            }
+            hookToken = data.k;
+        } else if (data.k !== hookToken) {
+            return;
+        }
+        delete data.k;
+        try {
+            const sent = chrome.runtime.sendMessage({ what: 'ygab:frame-diag', event: JSON.stringify(data) });
             if (sent && typeof sent.catch === 'function') {
                 sent.catch(() => {});
             }

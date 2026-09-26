@@ -1,0 +1,32 @@
+{
+  "about": "Фрагменты рекламы, которую пользователь видит с Cleathernet, — образцы для общего механизма (Э3). expect: hide — блок должен исчезнуть вместе с местом. signals — признаки, по которым его можно узнать без правил сайта; site-hint — если общих признаков мало.",
+  "snippets": [
+    {
+      "file": "kinogo-kng-rekl.html",
+      "site": "kinogo.online (домены меняются: .biz, .luxury, …)",
+      "expect": "hide",
+      "root": "div.kng-rekl",
+      "signals": [
+        "класс kng-rekl — слово «rekl» (реклама) в имени класса",
+        "ins с data-cp-host / data-cp-domain — слот рекламной сети",
+        "картинка-ссылка на другой домен с rel=noindex, баннер 600×200"
+      ],
+      "coverage": "RU AdList: правила kinogo есть, но под другие домены; kng-rekl не покрыт",
+      "reported": "2026-09-26"
+    },
+    {
+      "file": "vk-feed-promo-game.html",
+      "site": "vk.com",
+      "expect": "hide",
+      "root": "div.apps_feedRightAppsBlock",
+      "signals": [
+        "модификатор --promo и data-block-type=\"featured_promo_game\" — слово promo дважды и в разных местах",
+        "ref=feed_r_block_featured_promo_game в ссылках",
+        "своя кнопка «Скрыть» у блока"
+      ],
+      "coverage": "ни в одном наборе uBO Lite",
+      "note": "«promo» двусмысленно (бывают промо-страницы и промокоды) — нужен второй признак или подсказка сайта",
+      "reported": "2026-09-26"
+    }
+  ]
+}

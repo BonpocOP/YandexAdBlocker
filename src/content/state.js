@@ -8,6 +8,35 @@
 
 let settings = { ...DEFAULTS };
 let noStretchGames = [];
+let offSites = [];
+
+// Хост вкладки, а не фрейма: выключили расширение на yandex.ru — оно
+// выключено и во фреймах игры на других доменах.
+function topHostname() {
+    try {
+        if (window.top === window) {
+            return location.hostname;
+        }
+        const origins = location.ancestorOrigins;
+        if (origins && origins.length) {
+            return new URL(origins[origins.length - 1]).hostname;
+        }
+    } catch (e) {
+        /* нет доступа — остаётся хост фрейма */
+    }
+    return location.hostname;
+}
+
+// Выключили на yandex.ru — выключено и на www.yandex.ru.
+function siteIsOff() {
+    const host = topHostname();
+    return offSites.some(site => host === site || host.endsWith('.' + site));
+}
+
+// Работаем ли мы на этой странице: общий выключатель и выключение на сайте.
+function isActive() {
+    return settings.enabled !== false && !siteIsOff();
+}
 let observer = null;
 let shellObserver = null;
 let frameResizeObserver = null;
@@ -88,14 +117,24 @@ const journalTime = ms => Math.round((ms - journalStart) / 100) / 10;
 // проходит, строка проходит. Приходит двумя путями: из хука на этой же
 // странице — событием EV_DIAG, из фрейма игры — через frame.js и фоновый
 // скрипт (см. main.js).
+// Какие события хука бывают. Всё остальное — не от него: отбрасываем.
+const HOOK_EVENT_KINDS = ['sdk-hook-loaded', 'sdk-patched', 'sdk-call', 'frame-messages'];
+const HOOK_EVENT_MAX = 16000;
+
 function handleHookEvent(raw) {
+    if (typeof raw !== 'string' || raw.length > HOOK_EVENT_MAX) {
+        return;
+    }
     let data;
     try {
         data = JSON.parse(raw);
     } catch (e) {
         return;
     }
-    if (!data || typeof data.kind !== 'string') {
+    if (!data || typeof data !== 'object' || !HOOK_EVENT_KINDS.includes(data.kind)) {
+        return;
+    }
+    if (typeof data.href !== 'string' || typeof data.at !== 'number') {
         return;
     }
     if (data.kind === 'frame-messages' && data.detail && typeof data.detail === 'object') {
@@ -118,8 +157,37 @@ function handleHookEvent(raw) {
 // Отчёт собирается в верхнем документе. Во фреймах игр на games.s3 этот же
 // скрипт тоже работает, но их хук отчитывается через frame.js — здесь его
 // не слушаем, чтобы не считать события дважды.
+//
+// Пароль: хук кладёт его в каждое событие, первое событие приходит до
+// запуска скриптов страницы. Запоминаем пароль из него и дальше принимаем
+// только события с ним — подделку от страницы отбрасываем.
+let hookToken = null;
+function acceptFromHook(raw) {
+    if (typeof raw !== 'string' || raw.length > HOOK_EVENT_MAX) {
+        return;
+    }
+    let data;
+    try {
+        data = JSON.parse(raw);
+    } catch (e) {
+        return;
+    }
+    if (!data || typeof data.k !== 'string') {
+        return;
+    }
+    if (hookToken === null) {
+        if (data.kind !== 'sdk-hook-loaded') {
+            return;
+        }
+        hookToken = data.k;
+    } else if (data.k !== hookToken) {
+        return;
+    }
+    delete data.k;
+    handleHookEvent(JSON.stringify(data));
+}
 if (window.top === window) {
-    document.addEventListener(EV_DIAG, event => handleHookEvent(event.detail));
+    document.addEventListener(EV_DIAG, event => acceptFromHook(event.detail));
 }
 
 // Флажки из попапа «что ещё включено» — для отчёта. Кэш: отчёт собирается

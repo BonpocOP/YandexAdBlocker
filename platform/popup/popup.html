@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Cleathernet</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header class="head">
+        <h1 class="head__title">Cleathernet</h1>
+        <a class="head__link" id="advanced" href="#" title="Что убирать кроме рекламы, где расширение выключено">Настройки</a>
+    </header>
+
+    <a class="update" id="update" href="#" target="_blank" rel="noopener" hidden></a>
+
+    <section class="site" id="site">
+        <div class="site__row">
+            <label class="site__label" for="siteOn">
+                <span class="site__host" id="host">—</span>
+                <span class="site__state" id="siteState">Загрузка…</span>
+            </label>
+            <label class="switch">
+                <input type="checkbox" id="siteOn" class="switch__input" disabled>
+                <span class="switch__track"></span>
+            </label>
+        </div>
+        <p class="site__note" id="siteNote" hidden>
+            <span id="siteNoteText"></span>
+            <button type="button" class="btn btn_small" id="reloadTab">Обновить страницу</button>
+        </p>
+    </section>
+
+    <section class="games" id="games" hidden>
+        <h2 class="games__title">Яндекс.Игры</h2>
+        <ul class="options" id="options">
+            <li class="option">
+                <label class="option__label" for="sticky">
+                    <span class="option__name">Баннер в игре</span>
+                    <span class="option__hint">Sticky-баннер снизу + растягивание игры</span>
+                </label>
+                <label class="switch switch_small">
+                    <input type="checkbox" id="sticky" class="switch__input">
+                    <span class="switch__track"></span>
+                </label>
+            </li>
+            <li class="option">
+                <label class="option__label" for="fullscreen">
+                    <span class="option__name">Полноэкранная</span>
+                    <span class="option__hint">Реклама между уровнями пропускается</span>
+                </label>
+                <label class="switch switch_small">
+                    <input type="checkbox" id="fullscreen" class="switch__input">
+                    <span class="switch__track"></span>
+                </label>
+            </li>
+            <li class="option">
+                <label class="option__label" for="catalog">
+                    <span class="option__name">Каталог игр</span>
+                    <span class="option__hint">Рекламные карточки в списках</span>
+                </label>
+                <label class="switch switch_small">
+                    <input type="checkbox" id="catalog" class="switch__input">
+                    <span class="switch__track"></span>
+                </label>
+            </li>
+            <li class="option" id="stretchOption" hidden>
+                <label class="option__label" for="widthStretch">
+                    <span class="option__name">Растягивать по ширине</span>
+                    <span class="option__hint" id="gameHint">Только для этой игры</span>
+                </label>
+                <label class="switch switch_small">
+                    <input type="checkbox" id="widthStretch" class="switch__input">
+                    <span class="switch__track"></span>
+                </label>
+            </li>
+        </ul>
+    </section>
+
+    <!-- Всё про отчёт — в одном свёрнутом разделе: пока он закрыт, попап
+         только сообщает и не мешает. -->
+    <details class="env" id="reportBox">
+        <summary class="env__title">Сообщить о проблеме</summary>
+        <p class="env__hint">Что ещё включено в браузере? Попадёт в отчёт — так проще найти причину.</p>
+        <label class="env__item"><input type="checkbox" data-env="blocker"> Другой блокировщик рекламы</label>
+        <label class="env__item"><input type="checkbox" data-env="vpn"> VPN или прокси</label>
+        <label class="env__item"><input type="checkbox" data-env="translator"> Переводчик страниц</label>
+        <button type="button" class="btn btn_ghost btn_wide" id="report">Скопировать отчёт</button>
+    </details>
+
+    <script type="module" src="popup.js"></script>
+</body>
+</html>

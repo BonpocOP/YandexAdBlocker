@@ -1,0 +1,71 @@
+/* Основа — стили страницы первого запуска (карточки, цвета, тема). */
+
+.toggles,
+.sites {
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.toggle + .toggle,
+.site-row + .site-row {
+    border-top: 1px solid var(--line);
+}
+
+.toggle__label {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    cursor: pointer;
+}
+
+.toggle__label input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 2px 0 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.toggle__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.toggle__name {
+    font-weight: 600;
+}
+
+.toggle__hint,
+.muted {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.site-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    overflow-wrap: anywhere;
+}
+
+.site-row__button {
+    flex: none;
+    padding: 6px 12px;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.site-row__button:hover {
+    border-color: var(--accent);
+}

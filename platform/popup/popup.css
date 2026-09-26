@@ -1,0 +1,87 @@
+/* Основа — стили попапа игр: цвета, тумблеры, списки, кнопки. */
+@import url("../../popup/popup.css");
+
+body {
+    width: 320px;
+}
+
+.head__link {
+    color: var(--muted);
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.head__link:hover {
+    color: var(--text);
+}
+
+.site {
+    margin: 12px 0 0;
+    padding: 12px;
+    background: var(--surface);
+    border-radius: 10px;
+}
+
+.site__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.site__label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.site__host {
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.site__state {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.site_off .site__state {
+    color: var(--accent);
+}
+
+.site__note {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 10px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.btn_small {
+    flex: none;
+    align-self: flex-start;
+    padding: 6px 10px;
+}
+
+/* Отступы между блоками: счётчиков между ними больше нет. */
+.games,
+.env {
+    margin-top: 12px;
+}
+
+.games__title {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}

@@ -44,6 +44,12 @@
     const ProxyCtor = Proxy;
     const resolved = value => Promise.resolve(value);
 
+    // Пароль канала диагностики. Первое событие (sdk-hook-loaded) уходит
+    // синхронно на document_start: его слышит только наш изолированный мир
+    // — скрипты страницы ещё не запущены. Дальше наш мир принимает только
+    // события с этим паролем, и страница не может подложить мусор в отчёт.
+    const token = Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(36)).join('');
+
     // Настройки приходят из изолированного мира (content script на
     // странице Яндекса или frame.js во фрейме игры). Пока не пришли —
     // считаем всё включённым.
@@ -63,7 +69,7 @@
     // Диагностика для отчёта — в изолированный мир того же документа.
     function notify(kind, detail) {
         try {
-            const payload = toJSON({ kind, detail: detail === undefined ? null : detail, href: location.href, at: Date.now() });
+            const payload = toJSON({ k: token, kind, detail: detail === undefined ? null : detail, href: location.href, at: Date.now() });
             reflectApply(dispatch, document, [new CustomEventCtor(EV_DIAG, { detail: payload })]);
         } catch (e) {
             /* диагностика не критична */

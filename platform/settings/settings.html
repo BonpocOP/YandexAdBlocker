@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Настройки Cleathernet</title>
+<link rel="stylesheet" href="../welcome/welcome.css">
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+<main class="page">
+    <header class="hero">
+        <img class="hero__icon" src="../icons/icon128.png" alt="" width="48" height="48">
+        <div>
+            <h1 class="hero__title">Настройки</h1>
+            <p class="hero__lead">Всё нужное включено сразу — здесь только то, что можно добавить или убрать.</p>
+        </div>
+    </header>
+
+    <section class="card">
+        <h2>Что убирать, кроме рекламы</h2>
+        <ul class="toggles" id="annoyances"></ul>
+    </section>
+
+    <section class="card">
+        <h2>Списки для русскоязычных сайтов</h2>
+        <ul class="toggles" id="regional"></ul>
+    </section>
+
+    <section class="card">
+        <h2>Где расширение выключено</h2>
+        <p class="muted" id="offEmpty">Нигде. Выключить на сайте можно кнопкой в меню расширения.</p>
+        <ul class="sites" id="offSites"></ul>
+    </section>
+
+    <section class="card card_quiet">
+        <h2>Движок</h2>
+        <p>Фильтры работают на движке <a href="https://github.com/uBlockOrigin/uBOL-home" target="_blank" rel="noopener">uBO Lite</a>
+            <span id="engineVersion"></span> (GPLv3, автор — Raymond Hill) со списками EasyList,
+            EasyPrivacy, RU AdList и другими. Cleathernet тоже распространяется под GPLv3.</p>
+    </section>
+
+    <p class="setup" id="status" role="status"></p>
+</main>
+<script type="module" src="settings.js"></script>
+</body>
+</html>

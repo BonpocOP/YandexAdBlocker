@@ -212,6 +212,13 @@ const BAIT_SELECTOR = '#AdBanner, .AdsBox, [class*="ad_box"], [class*="ad_banner
 // игроком, а расширение помнит его для каждой игры.
 const NO_STRETCH_KEY = 'noStretchGames';
 
+// Сайты, где пользователь выключил расширение кнопкой в попапе (сборка
+// Cleathernet). Список хостов в local-хранилище, а не sync: выключенные
+// сайты движка uBO Lite тоже локальные, и через синхронизацию профиля на
+// другом устройстве наш слой выключился бы, а движок — нет. Тот же ключ
+// читает frame.js.
+const OFF_SITES_KEY = 'ygab.offSites';
+
 // ===== src/content/state.js =====
 
 // Состояние работы и связь с расширением.
@@ -222,6 +229,35 @@ const NO_STRETCH_KEY = 'noStretchGames';
 
 let settings = { ...DEFAULTS };
 let noStretchGames = [];
+let offSites = [];
+
+// Хост вкладки, а не фрейма: выключили расширение на yandex.ru — оно
+// выключено и во фреймах игры на других доменах.
+function topHostname() {
+    try {
+        if (window.top === window) {
+            return location.hostname;
+        }
+        const origins = location.ancestorOrigins;
+        if (origins && origins.length) {
+            return new URL(origins[origins.length - 1]).hostname;
+        }
+    } catch (e) {
+        /* нет доступа — остаётся хост фрейма */
+    }
+    return location.hostname;
+}
+
+// Выключили на yandex.ru — выключено и на www.yandex.ru.
+function siteIsOff() {
+    const host = topHostname();
+    return offSites.some(site => host === site || host.endsWith('.' + site));
+}
+
+// Работаем ли мы на этой странице: общий выключатель и выключение на сайте.
+function isActive() {
+    return settings.enabled !== false && !siteIsOff();
+}
 let observer = null;
 let shellObserver = null;
 let frameResizeObserver = null;
@@ -302,14 +338,24 @@ const journalTime = ms => Math.round((ms - journalStart) / 100) / 10;
 // проходит, строка проходит. Приходит двумя путями: из хука на этой же
 // странице — событием EV_DIAG, из фрейма игры — через frame.js и фоновый
 // скрипт (см. main.js).
+// Какие события хука бывают. Всё остальное — не от него: отбрасываем.
+const HOOK_EVENT_KINDS = ['sdk-hook-loaded', 'sdk-patched', 'sdk-call', 'frame-messages'];
+const HOOK_EVENT_MAX = 16000;
+
 function handleHookEvent(raw) {
+    if (typeof raw !== 'string' || raw.length > HOOK_EVENT_MAX) {
+        return;
+    }
     let data;
     try {
         data = JSON.parse(raw);
     } catch (e) {
         return;
     }
-    if (!data || typeof data.kind !== 'string') {
+    if (!data || typeof data !== 'object' || !HOOK_EVENT_KINDS.includes(data.kind)) {
+        return;
+    }
+    if (typeof data.href !== 'string' || typeof data.at !== 'number') {
         return;
     }
     if (data.kind === 'frame-messages' && data.detail && typeof data.detail === 'object') {
@@ -332,8 +378,37 @@ function handleHookEvent(raw) {
 // Отчёт собирается в верхнем документе. Во фреймах игр на games.s3 этот же
 // скрипт тоже работает, но их хук отчитывается через frame.js — здесь его
 // не слушаем, чтобы не считать события дважды.
+//
+// Пароль: хук кладёт его в каждое событие, первое событие приходит до
+// запуска скриптов страницы. Запоминаем пароль из него и дальше принимаем
+// только события с ним — подделку от страницы отбрасываем.
+let hookToken = null;
+function acceptFromHook(raw) {
+    if (typeof raw !== 'string' || raw.length > HOOK_EVENT_MAX) {
+        return;
+    }
+    let data;
+    try {
+        data = JSON.parse(raw);
+    } catch (e) {
+        return;
+    }
+    if (!data || typeof data.k !== 'string') {
+        return;
+    }
+    if (hookToken === null) {
+        if (data.kind !== 'sdk-hook-loaded') {
+            return;
+        }
+        hookToken = data.k;
+    } else if (data.k !== hookToken) {
+        return;
+    }
+    delete data.k;
+    handleHookEvent(JSON.stringify(data));
+}
 if (window.top === window) {
-    document.addEventListener(EV_DIAG, event => handleHookEvent(event.detail));
+    document.addEventListener(EV_DIAG, event => acceptFromHook(event.detail));
 }
 
 // Флажки из попапа «что ещё включено» — для отчёта. Кэш: отчёт собирается
@@ -1766,7 +1841,7 @@ function scanCatalog() {
 }
 
 function scan() {
-    if (orphaned || !settings.enabled || !document.body) {
+    if (orphaned || !isActive() || !document.body) {
         return;
     }
     // Проверяем мост на каждом проходе: сканирование запускает
@@ -1930,7 +2005,7 @@ function stopObserver() {
 function publishSdkSettings() {
     document.dispatchEvent(new CustomEvent(EV_CFG, {
         detail: JSON.stringify({
-            enabled: settings.enabled,
+            enabled: isActive(),
             fullscreen: settings.fullscreen,
             rewarded: settings.rewarded
         })
@@ -1947,7 +2022,7 @@ document.addEventListener(EV_ASK, () => {
 function publishCssFlags() {
     const root = document.documentElement;
     const flag = (attr, on) => on ? root.removeAttribute(attr) : root.setAttribute(attr, 'off');
-    flag('data-ygab', settings.enabled);
+    flag('data-ygab', isActive());
     flag('data-ygab-sticky', settings.sticky);
     flag('data-ygab-catalog', settings.catalog);
     flag('data-ygab-fullscreen', settings.fullscreen);
@@ -1971,7 +2046,7 @@ function applyState() {
     restoreStyles();
     unhideAll();
 
-    if (!settings.enabled) {
+    if (!isActive()) {
         pageBlocked = 0;
         kickResize();
         return;
@@ -2179,8 +2254,12 @@ function buildReport() {
     const frame = largestFrame();
 
     let version = null;
+    let product = null;
     try {
-        version = chrome.runtime.getManifest().version;
+        const manifest = chrome.runtime.getManifest();
+        version = manifest.version;
+        // Расширение для игр или сборка Cleathernet: версии у них пока общие.
+        product = manifest.name;
     } catch (e) {
         /* контекст расширения оборван — версия не критична */
     }
@@ -2189,9 +2268,12 @@ function buildReport() {
         // Без версии не отличить «баг не исправлен» от «расширение не
         // перезагружено после обновления».
         version,
+        product,
         url: location.href,
         blockedOnPage: pageBlocked,
         settings,
+        // Выключено кнопкой «на этом сайте» (сборка Cleathernet).
+        siteOff: siteIsOff(),
         viewport: { width: window.innerWidth, height: window.innerHeight },
         // Пусто — значит sdk-hook.js не попал во фрейм игры и реклама
         // через SDK идёт мимо заглушки.
@@ -2269,7 +2351,16 @@ if (chrome.runtime && chrome.runtime.onMessage) {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || orphaned) {
+    if (orphaned) {
+        return;
+    }
+    if (area === 'local' && OFF_SITES_KEY in changes) {
+        const next = changes[OFF_SITES_KEY].newValue;
+        offSites = Array.isArray(next) ? next : [];
+        applyState();
+        return;
+    }
+    if (area !== 'sync') {
         return;
     }
     let dirty = false;
@@ -2290,13 +2381,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 callExtension(() => {
-    chrome.storage.sync.get({ ...DEFAULTS, [NO_STRETCH_KEY]: [] }, stored => {
-        settings = { ...DEFAULTS, ...stored };
-        noStretchGames = Array.isArray(stored[NO_STRETCH_KEY]) ? stored[NO_STRETCH_KEY] : [];
-        applyState();
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', scan, { once: true });
-        }
+    chrome.storage.local.get({ [OFF_SITES_KEY]: [] }, local => {
+        offSites = Array.isArray(local[OFF_SITES_KEY]) ? local[OFF_SITES_KEY] : [];
+        chrome.storage.sync.get({ ...DEFAULTS, [NO_STRETCH_KEY]: [] }, stored => {
+            settings = { ...DEFAULTS, ...stored };
+            noStretchGames = Array.isArray(stored[NO_STRETCH_KEY]) ? stored[NO_STRETCH_KEY] : [];
+            applyState();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', scan, { once: true });
+            }
+        });
     });
 });
 

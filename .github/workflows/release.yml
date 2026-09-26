@@ -1,9 +1,12 @@
-# Выпуск релиза по тегу вида v1.5.2.
+# Выпуск релиза по тегу вида v1.8.0.
 #
-# Собирает архив тем же tools/pack.py, что и локально, и прикладывает его к
-# релизу под постоянным именем yandex-games-adblocker.zip — на это имя ведёт
-# кнопка «Скачать» в README (releases/latest/download/...). Рядом кладётся
-# копия с версией в имени, для истории.
+# Собирает Cleathernet: движок uBO Lite по vendor/ubol.json (сверка по
+# SHA-256 и договору dev/ubol-contract.mjs) + наш код — тем же
+# dev/build-extension.mjs, что и локально, — и упаковывает папку tools/pack.py.
+# К релизу прикладывается под постоянным именем cleathernet.zip — на него
+# ведёт кнопка «Скачать» в README (releases/latest/download/...) — и под
+# старым yandex-games-adblocker.zip, чтобы прежние ссылки вели на новую
+# версию. Рядом — копия с версией в имени, для истории.
 name: Release
 
 on:
@@ -19,6 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Версия в теге совпадает с манифестом
         run: |
           VERSION=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
@@ -28,17 +35,25 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      - name: Сборка
+        working-directory: dev
+        run: |
+          node build.mjs --check
+          node build-extension.mjs
+
       - name: Упаковка
         run: |
-          python3 tools/pack.py out/yandex-games-adblocker.zip
-          cp out/yandex-games-adblocker.zip "out/yandex-games-adblocker-v$VERSION.zip"
+          python3 tools/pack.py --dir build/extension out/cleathernet.zip
+          cp out/cleathernet.zip out/yandex-games-adblocker.zip
+          cp out/cleathernet.zip "out/cleathernet-v$VERSION.zip"
 
       - name: Релиз
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
+            out/cleathernet.zip \
             out/yandex-games-adblocker.zip \
-            "out/yandex-games-adblocker-v$VERSION.zip" \
-            --title "Версия $VERSION" \
+            "out/cleathernet-v$VERSION.zip" \
+            --title "Cleathernet $VERSION" \
             --generate-notes

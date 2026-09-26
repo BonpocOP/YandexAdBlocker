@@ -11,6 +11,7 @@
 //   node test-game-hook.mjs [--headed]
 
 import { chromium } from 'playwright';
+import { browserOptions } from './browser.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -22,7 +23,11 @@ const headed = process.argv.includes('--headed');
 // --neighbor <имя>: запустить рядом распакованного соседа из dev/.neighbors.
 const neighborIndex = process.argv.indexOf('--neighbor');
 const neighbor = neighborIndex === -1 ? null : process.argv[neighborIndex + 1];
-const EXTENSIONS = [ROOT].concat(neighbor ? [path.join(DEV, '.neighbors', neighbor)] : []);
+// --ext <папка>: проверить не корень репозитория, а другую сборку, например
+// build/extension (обёртка над uBO Lite).
+const extIndex = process.argv.indexOf('--ext');
+const EXT = extIndex === -1 ? ROOT : path.resolve(process.argv[extIndex + 1]);
+const EXTENSIONS = [EXT].concat(neighbor ? [path.join(DEV, '.neighbors', neighbor)] : []);
 
 const TOP_URL = 'https://yandex.ru/games/app/1';
 const FRAME_URL = 'https://app-1.cdn.games.yandex.net/1/index.html?sdk=%2Fsdk%2F_%2Fv2.js#origin=https%3A%2F%2Fyandex.ru&app-id=1&device-type=desktop';
@@ -125,7 +130,7 @@ const check = (name, ok, detail) => results.push({ ok: Boolean(ok), name, detail
 
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'ygab-hook-'));
 const context = await chromium.launchPersistentContext(profile, {
-    executablePath: path.join(DEV, '.browsers', 'chrome-win64', 'chrome.exe'),
+    ...browserOptions(),
     headless: !headed,
     viewport: { width: 1600, height: 900 },
     args: ['--lang=ru', '--disable-extensions-except=' + EXTENSIONS.join(','), '--load-extension=' + EXTENSIONS.join(',')]
@@ -145,7 +150,7 @@ try {
         return route.abort();
     });
 
-    const isOurs = w => w.url().endsWith('/src/background.js');
+    const isOurs = w => w.url().endsWith('/src/background.js') || w.url().endsWith('/ygab/background.js');
     let worker = context.serviceWorkers().find(isOurs);
     if (!worker) worker = await context.waitForEvent('serviceworker', { predicate: isOurs, timeout: 15000 });
 
@@ -283,6 +288,31 @@ try {
     check('баннер спрятан', hidden1 === 'none', hidden1);
     check('после того как страница стёрла стиль, баннер снова спрятан', hidden2.display === 'none', hidden2);
 
+    // --- выключение на сайте (кнопка попапа Cleathernet): наш слой
+    // откатывается на лету, хук во фрейме игры отпускает рекламу к SDK.
+    await worker.evaluate(() => chrome.storage.local.set({ 'ygab.offSites': ['yandex.ru'] }));
+    await page.waitForTimeout(800);
+    const offBanner = await page.evaluate(() => getComputedStyle(window.banner).display);
+    const offReward = await callRewarded();
+    check('выключено на сайте: баннер вернулся без перезагрузки', offBanner !== 'none', offBanner);
+    check('выключено на сайте: реклама за награду идёт к настоящему SDK', offReward.original === 1 && !offReward.rewarded, offReward);
+    await worker.evaluate(() => chrome.storage.local.remove('ygab.offSites'));
+    await page.waitForTimeout(800);
+    const onBanner = await page.evaluate(() => getComputedStyle(window.banner).display);
+    const onReward = await callRewarded();
+    check('включено обратно: баннер спрятан, награда без ролика', onBanner === 'none' && onReward.rewarded && onReward.original === 0, { onBanner, onReward });
+
+    // --- страница подделывает событие хука (и в верхнем документе, и во
+    // фрейме): без пароля хука оно в отчёт не попадает
+    const forge = () => {
+        for (const extra of [{}, { k: 'guess' }]) {
+            document.dispatchEvent(new CustomEvent('kt3wmz', { detail: JSON.stringify({ kind: 'sdk-patched', detail: 'FORGED', href: location.href, at: Date.now(), ...extra }) }));
+        }
+    };
+    await page.evaluate(forge);
+    await frame.evaluate(forge);
+    await page.waitForTimeout(800);
+
     // --- отчёт получает диагностику из фрейма через фоновый скрипт
     const report = await worker.evaluate(async () => {
         const [tab] = await chrome.tabs.query({});
@@ -290,6 +320,7 @@ try {
         return { version: r.version, sdkEvents: r.sdkEvents.map(e => `${e.kind}:${typeof e.detail === 'string' ? e.detail : ''}`), journal: r.journal.map(j => j.kind), environment: r.environment, cost: r.cost };
     });
     check('отчёт: хук загрузился во фрейме', report.sdkEvents.includes('sdk-hook-loaded:iframe'), report.sdkEvents);
+    check('отчёт: поддельные события страницы отброшены', !report.sdkEvents.some(e => e.includes('FORGED')), report.sdkEvents);
     check('отчёт: методы SDK подменены', report.sdkEvents.some(e => e.startsWith('sdk-patched:') && e.includes('showRewardedVideo') && e.includes('showFullscreenAdv')), report.sdkEvents);
     check('отчёт: вызовы рекламы игрой в журнале', report.journal.includes('sdk-call'), report.journal);
     check('отчёт: закрытие окна в журнале', report.journal.includes('dismiss-end'), report.journal);

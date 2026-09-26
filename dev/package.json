@@ -8,6 +8,8 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "test": "node build.mjs --check && node test-game-hook.mjs && node test-update.mjs"
+    "test": "node build.mjs --check && node test-game-hook.mjs && node test-update.mjs",
+    "build:ext": "node build-extension.mjs",
+    "test:ext": "node build.mjs --check && node build-extension.mjs && node test-build.mjs && node test-game-hook.mjs --ext ../build/extension"
   }
 }

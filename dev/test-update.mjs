@@ -5,6 +5,7 @@
 //   node test-update.mjs
 
 import { chromium } from 'playwright';
+import { browserOptions } from './browser.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -17,7 +18,7 @@ const check = (name, ok, detail) => results.push({ ok: Boolean(ok), name, detail
 
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'ygab-update-'));
 const context = await chromium.launchPersistentContext(profile, {
-    executablePath: path.join(DEV, '.browsers', 'chrome-win64', 'chrome.exe'),
+    ...browserOptions(),
     headless: true,
     args: ['--disable-extensions-except=' + ROOT, '--load-extension=' + ROOT]
 });
@@ -38,13 +39,13 @@ try {
 
     const same = await worker.evaluate(async () => {
         const newer = await applyRelease({ tag_name: 'v' + chrome.runtime.getManifest().version, html_url: 'x' });
-        return { newer, badge: await chrome.action.getBadgeText({}), stored: (await chrome.storage.local.get('update')).update };
+        return { newer, badge: await chrome.action.getBadgeText({}), stored: (await chrome.storage.local.get('ygab.update'))['ygab.update'] };
     });
     check('та же версия: метки нет', !same.newer && same.badge === '' && same.stored === null, same);
 
     const fresh = await worker.evaluate(async () => {
         const newer = await applyRelease({ tag_name: 'v99.0.0', html_url: 'https://github.com/BonpocOP/YandexAdBlocker/releases/tag/v99.0.0' });
-        return { newer, badge: await chrome.action.getBadgeText({}), stored: (await chrome.storage.local.get('update')).update };
+        return { newer, badge: await chrome.action.getBadgeText({}), stored: (await chrome.storage.local.get('ygab.update'))['ygab.update'] };
     });
     check('новая версия: метка на значке и запись в хранилище', fresh.newer && fresh.badge === '↑' && fresh.stored && fresh.stored.version === '99.0.0', fresh);
 
